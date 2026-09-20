@@ -22,6 +22,12 @@ module Planify
   ISSUES = "https://github.com/alainm23/planify/issues"
 
   include GetText
+
+  # A test run drives the real window, but it must not reach the network, own
+  # a bus name, or write automatic backups into the user's data directory.
+  # PLANIFY_TEST turns those off and nothing else, so what is under test is
+  # still the code that ships.
+  def self.test_mode? = ENV.key?("PLANIFY_TEST")
 end
 
 require_relative "planify/paths"
@@ -106,4 +112,6 @@ require_relative "planify/dialogs/shortcuts"
 
 require_relative "planify/sidebar"
 require_relative "planify/main_window"
+require_relative "planify/cli"
 require_relative "planify/application"
+require_relative "planify/quick_add_application"

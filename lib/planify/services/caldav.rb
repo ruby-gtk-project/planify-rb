@@ -265,7 +265,21 @@ module Planify
         end
       end
 
+      # Deck rides on the same account, so it syncs after the calendars when
+      # the account has it switched on.
       def finish_sync(source, &done)
+        if deck_enabled?(source)
+          Deck.sync(source) { complete_sync(source, &done) }
+        else
+          complete_sync(source, &done)
+        end
+      end
+
+      def deck_enabled?(source)
+        source["caldav_type"] == "nextcloud" && source["use_deck"] == true
+      end
+
+      def complete_sync(source, &done)
         source.last_sync = Time.now.iso8601
         store.update_source(source)
         store.emit(:sync_finished, source)
@@ -406,6 +420,13 @@ module Planify
           if item.nil?
             SyncQueue.remove(entry)
             done.call
+          elsif deck?(item)
+            push_deck_card(
+              source,
+              item,
+              entry,
+              &done
+            )
           else
             put_item(
               source,
@@ -414,6 +435,21 @@ module Planify
               &done
             )
           end
+        end
+      end
+
+      # A Deck card lives behind the Deck REST API, not as an .ics resource,
+      # so it cannot be PUT to a calendar collection.
+      def deck?(record)
+        store.project(record.project_id)&.backend_type == "deck"
+      end
+
+      def push_deck_card(source, item, entry, &done)
+        Deck.push_card(source, item) do |ok|
+          if ok
+            SyncQueue.remove(entry)
+          end
+          done.call
         end
       end
 
@@ -471,6 +507,31 @@ module Planify
       end
 
       def delete_item(source, entry, &done)
+        if entry.arguments["backend"].to_s == "deck"
+          delete_deck_card(source, entry, &done)
+        else
+          delete_ical(source, entry, &done)
+        end
+      end
+
+      # The card is already gone locally, so the ids it needs come from the
+      # queued entry rather than from the store.
+      def delete_deck_card(source, entry, &done)
+        Item.new(
+          id:         entry.target_id,
+          project_id: entry.arguments["project_id"].to_s,
+          section_id: entry.arguments["section_id"].to_s,
+        ).then do |stub|
+          Deck.delete_card(source, stub) do |ok|
+            if ok
+              SyncQueue.remove(entry)
+            end
+            done.call
+          end
+        end
+      end
+
+      def delete_ical(source, entry, &done)
         entry.arguments["ical_url"].to_s.then do |url|
           if url.empty?
             SyncQueue.remove(entry)

@@ -35,7 +35,11 @@ module Planify
         scrolled.child = listbox
 
         listbox.signal_connect("row-activated") do |_, row|
-          @rows.key(row).then { |id| window.show_item(store.item(id)) }
+          @rows.find { |_, card| card.build == row }.then do |found|
+            unless found.nil?
+              window.show_item(store.item(found.first))
+            end
+          end
         end
 
         add_button.signal_connect("clicked") { add_task }
@@ -78,21 +82,30 @@ module Planify
       rebuild
     end
 
+    # Cards are reused between refreshes, for the same reason list rows are.
     def rebuild
-      @rows = {}
+      visible_items.then do |current|
+        ids = current.map(&:id)
 
-      while listbox.first_child
-        listbox.remove(listbox.first_child)
-      end
+        (@rows.keys - ids).each { |id| listbox.remove(@rows.delete(id).build) }
 
-      visible_items.each do |item|
-        ItemBoard.new(window, item).build.tap do |row|
-          @rows[item.id] = row
-          listbox.append(row)
+        current.each do |item|
+          if @rows.key?(item.id)
+            @rows.fetch(item.id).refresh
+          else
+            add_card(item)
+          end
         end
-      end
 
-      placeholder.visible = visible_items.empty?
+        placeholder.visible = current.empty?
+      end
+    end
+
+    def add_card(item)
+      ItemBoard.new(window, item).tap do |card|
+        @rows[item.id] = card
+        listbox.append(card.build)
+      end
     end
 
     def tint

@@ -140,19 +140,30 @@ module Planify
 
       def empty? = items.empty? && store.sections_by_project(project.id).empty?
 
+      # Section rows are reused for the same reason task rows are.
       def rebuild_sections
-        @section_rows = {}
-        while sections_box.first_child
-          sections_box.remove(sections_box.first_child)
-        end
+        store.sections_by_project(project.id).reject(&:hidden?).then do |sections|
+          ids = sections.map(&:id)
 
-        store.sections_by_project(project.id).reject(&:hidden?).each do |section|
-          SectionRow.new(window, section, project).build.tap do |row|
-            @section_rows[section.id] = row
-            sections_box.append(row)
+          (@section_rows.keys - ids).each do |id|
+            sections_box.remove(@section_rows.delete(id).build)
+          end
+
+          sections.each do |section|
+            if @section_rows.key?(section.id)
+              @section_rows.fetch(section.id).refresh
+            else
+              add_section_row(section)
+            end
           end
         end
+      end
 
+      def add_section_row(section)
+        SectionRow.new(window, section, project).tap do |row|
+          @section_rows[section.id] = row
+          sections_box.append(row.build)
+        end
       end
 
       def toggle_view_style

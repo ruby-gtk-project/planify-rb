@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# quick-add/. A standalone window that adds one task and exits — bound to a
+# desktop shortcut, so a task can be captured without switching to Planify.
+require_relative "../lib/planify"
+
+Planify::QuickAddApplication.new.build.run([$PROGRAM_NAME])

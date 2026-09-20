@@ -41,25 +41,42 @@ visibility.
 **Labels** — create, edit, delete (detaching from every task that carried it),
 colour, per-label filtering.
 
+**Synchronisation** — Todoist over its v1 sync API, and CalDAV, both with an
+offline write queue: a change made with no network reaches the server on the
+next sync, in the order it was made. Nextcloud is a CalDAV account with
+optional Deck sync, where boards become projects, stacks sections and cards
+tasks. Todoist signs in by OAuth or by a personal API token.
+
+**Descriptions** are Markdown, styled as you type rather than rendered, so the
+source stays editable: bold, italic, underline, code, links, headings, quotes,
+bullets, numbered lists and checkboxes, with Ctrl+B/I/U and list continuation.
+
+**Reminders and calendars** — absolute and relative reminders that fire as
+desktop notifications, a midnight monitor that rolls the day over, and the
+system's own calendar events shown beside the day's tasks through Evolution
+Data Server.
+
 **Elsewhere** — quick add with natural-language parsing (`buy milk tomorrow p1
-@home`), quick find across tasks, projects and labels, preferences (general,
-appearance, backups), keyboard shortcuts, JSON backup export and import, the
-tutorial project and default labels on first run, and all three appearances
-(light, dark, dark blue) with the system accent colour.
+@home`), quick find across tasks, projects and labels, a productivity report
+with goals, streak and a year-long heat map, per-task change history recorded
+by the database itself, attachments, preferences across six pages, the full
+keyboard shortcut set, JSON backup export, import and automatic daily backups,
+import from a Planner-era database, the tutorial project and default labels on
+first run, and all three appearances (light, dark, dark blue) with the system
+accent colour.
+
+**Beyond the window** — `planify-cli` adds, lists, updates and backs up from a
+terminal and tells a running window over DBus; `planify-quick-add` is a
+standalone capture window for a desktop shortcut; and the GNOME Shell search
+provider answers overview searches.
 
 ## What is not here
 
-**Synchronisation.** Todoist, Nextcloud, CalDAV and Google Tasks are not
-ported. That is roughly a third of the upstream source — four service clients,
-OAuth, an offline write queue and conflict resolution — and it is its own
-piece of work rather than part of the initial port. The `Sync` action and menu
-item exist and say so; the database keeps its `Sources`-shaped columns so a
-later sync port has nothing to migrate.
+**Google Tasks.** Upstream carries a `GOOGLE_TASKS` source type and the GNOME
+Online Accounts plumbing for it, but no client; there is nothing to port.
 
-Also not ported: system calendar event display, desktop reminder
-notifications, the DBus server and its search provider, the quick-add
-standalone binary, drag-and-drop reordering, and the Markdown editor (task
-descriptions are plain text).
+**Drag-and-drop reordering inside a list.** Cards drag between board columns;
+reordering a list is done from Manage Projects and Section Order instead.
 
 ## License
 

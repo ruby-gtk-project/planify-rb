@@ -27,7 +27,10 @@ module Planify
         win.add_breakpoint(narrow_breakpoint)
 
         toast_overlay.tap do |overlay|
-          overlay.child = split_view
+          overlay.child = window_overlay
+
+          window_overlay.child = split_view
+          window_overlay.add_overlay(multi_select_toolbar.build)
 
           split_view.tap do |sv|
             sv.sidebar = sidebar_toolbar
@@ -41,6 +44,7 @@ module Planify
                 header.title_widget = sidebar_title
                 header.pack_start(search_button)
                 header.pack_end(menu_button)
+                header.pack_end(sync_button.build)
 
                 search_button.signal_connect("clicked") { open_quick_find }
               end
@@ -115,11 +119,14 @@ module Planify
     def start_services
       Services::Notification.init(app)
       Services::TimeMonitor.init
-      Services::BackupManager.init_auto_backup
       Services::Productivity.watch
-      Services::DBusServer.register(app, self)
-      check_for_updates
-      sync_on_startup
+
+      unless Planify.test_mode?
+        Services::BackupManager.init_auto_backup
+        Services::DBusServer.register(app, self)
+        check_for_updates
+        sync_on_startup
+      end
     end
 
     def check_for_updates
@@ -225,31 +232,45 @@ module Planify
       detail_split_view.show_sidebar = true
     end
 
-    def open_quick_find
-      Dialogs::QuickFind.new(self).present(window)
+    def open_quick_find(term = nil)
+      Dialogs::QuickFind.new(self).present(window, term)
     end
 
     def new_item
       QuickAdd.new(self).present(window)
     end
 
-    def new_project
-      Dialogs::ProjectDialog.new(self).present(window)
+    def new_project(source = nil)
+      Dialogs::ProjectDialog.new(self, source: source).present(window)
     end
 
     # --- actions --------------------------------------------------------
 
+    # src/Services/ActionManager.vala's set, named for what they do rather
+    # than with upstream's action_ prefix.
     WINDOW_ACTIONS = {
-      "quick-find"     => :open_quick_find,
-      "new-item"       => :new_item,
-      "new-project"    => :new_project,
-      "go-inbox"       => :go_inbox,
-      "go-today"       => :go_today,
-      "go-scheduled"   => :go_scheduled,
-      "go-labels"      => :go_labels,
-      "go-pinboard"    => :go_pinboard,
-      "toggle-sidebar" => :toggle_sidebar,
-      "sync"           => :sync,
+      "quick-find"       => :open_quick_find,
+      "new-item"         => :new_item,
+      "new-item-paste"   => :new_item_from_clipboard,
+      "new-project"      => :new_project,
+      "new-section"      => :new_section,
+      "go-home"          => :go_homepage,
+      "go-inbox"         => :go_inbox,
+      "go-today"         => :go_today,
+      "go-scheduled"     => :go_scheduled,
+      "go-labels"        => :go_labels,
+      "go-pinboard"      => :go_pinboard,
+      "go-completed"     => :go_completed,
+      "go-all"           => :go_all,
+      "next-project"     => :next_project,
+      "previous-project" => :previous_project,
+      "toggle-sidebar"   => :toggle_sidebar,
+      "toggle-details"   => :toggle_details,
+      "manage-projects"  => :manage_projects,
+      "completed-tasks"  => :show_completed_tasks,
+      "productivity"     => :show_productivity,
+      "calendar-sync"    => :show_calendar_sync,
+      "sync"             => :sync,
     }.freeze
 
     # Takes the window rather than reading the memo: this runs from inside the
@@ -273,6 +294,89 @@ module Planify
 
     def go_pinboard = show_filter("pinboard")
 
+    def go_completed = show_filter("completed")
+
+    def go_all = show_filter("all")
+
+    # Ctrl+Shift+V: the clipboard becomes tasks, one per line, which is how a
+    # pasted list is usually meant.
+    def new_item_from_clipboard
+      Gdk::Display.default.clipboard.read_text_async(nil) do |clipboard, result|
+        begin
+          create_from_text(clipboard.read_text_finish(result))
+        rescue StandardError => error
+          Services::LogService.debug("Window", "paste failed: #{error.message}")
+        end
+      end
+    end
+
+    def create_from_text(text)
+      text.to_s.lines.map(&:strip).reject(&:empty?).then do |lines|
+        if lines.empty?
+          toast(_("The clipboard is empty."))
+        else
+          store.inbox_project.then do |inbox|
+            lines.each { |line| store.insert_item(Item.new(content: line, project_id: inbox.id)) }
+            toast(n_("%d task added", "%d tasks added", lines.size) % lines.size)
+          end
+        end
+      end
+    end
+
+    def new_section
+      current_project.then do |project|
+        if project.nil?
+          toast(_("Open a project first."))
+        else
+          Dialogs::SectionDialog.new(self, project).present(window)
+        end
+      end
+    end
+
+    # The project whose view is showing, if any — several actions only make
+    # sense inside one.
+    def current_project
+      views_stack.visible_child_name.to_s.then do |key|
+        if key.start_with?("project-")
+          store.project(key.delete_prefix("project-"))
+        end
+      end
+    end
+
+    def next_project = step_project(1)
+
+    def previous_project = step_project(-1)
+
+    def step_project(direction)
+      store.root_projects.then do |projects|
+        unless projects.empty?
+          projects.index(current_project).then do |index|
+            show_project(projects[((index || 0) + direction) % projects.size])
+          end
+        end
+      end
+    end
+
+    def toggle_details
+      detail_split_view.show_sidebar = !detail_split_view.show_sidebar?
+    end
+
+    def manage_projects
+      Dialogs::ManageProjects.new(self).present(window)
+    end
+
+    def show_completed_tasks
+      Dialogs::CompletedTasks.new(self, current_project).present(window)
+    end
+
+    def show_productivity
+      Dialogs::ProductivityReport.new.present(window)
+    end
+
+    def show_calendar_sync
+      Dialogs::CalendarSync.new.present(window)
+    end
+
     def toggle_sidebar
       split_view.show_sidebar = !split_view.show_sidebar?
     end
@@ -292,6 +396,12 @@ module Planify
     # --- widgets --------------------------------------------------------
 
     def toast_overlay = @toast_overlay ||= Adwaita::ToastOverlay.new
+
+    def window_overlay = @window_overlay ||= Gtk::Overlay.new
+
+    def sync_button = @sync_button ||= SyncButton.new(self)
+
+    def multi_select_toolbar = @multi_select_toolbar ||= MultiSelectToolbar.new(self)
 
     def split_view
       @split_view ||= Adwaita::OverlaySplitView.new.tap do |sv|
@@ -360,6 +470,15 @@ module Planify
         Gio::Menu.new.tap do |section|
           section.append(_("Preferences"), "app.preferences")
           section.append(_("Keyboard Shortcuts"), "app.shortcuts")
+          menu.append_section(nil, section)
+        end
+
+        Gio::Menu.new.tap do |section|
+          section.append(_("All Tasks"), "win.go-all")
+          section.append(_("Completed Tasks"), "win.completed-tasks")
+          section.append(_("Manage Projects"), "win.manage-projects")
+          section.append(_("Productivity"), "win.productivity")
+          section.append(_("Calendar Events"), "win.calendar-sync")
           menu.append_section(nil, section)
         end
 

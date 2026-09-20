@@ -33,7 +33,11 @@ module Planify
         revealer.child = listbox
 
         listbox.signal_connect("row-activated") do |_, row|
-          @rows.key(row).then { |item_id| window.show_item(Store.instance.item(item_id)) }
+          @rows.find { |_, entry| entry.build == row }.then do |found|
+            unless found.nil?
+              window.show_item(Store.instance.item(found.first))
+            end
+          end
         end
 
         register_actions
@@ -66,20 +70,31 @@ module Planify
       end
     end
 
+    # Rows are reused between refreshes rather than rebuilt, which keeps a
+    # long list from churning a MenuButton per row on every item event.
     def rebuild
-      @rows = {}
-      while listbox.first_child
-        listbox.remove(listbox.first_child)
-      end
+      items.then do |current|
+        ids = current.map(&:id)
 
-      items.each do |item|
-        ItemRow.new(window, item).build.tap do |row|
-          @rows[item.id] = row
-          listbox.append(row)
+        (@rows.keys - ids).each { |id| listbox.remove(@rows.delete(id).build) }
+
+        current.each do |item|
+          if @rows.key?(item.id)
+            @rows.fetch(item.id).refresh
+          else
+            add_row(item)
+          end
         end
-      end
 
-      placeholder.visible = items.empty?
+        placeholder.visible = current.empty?
+      end
+    end
+
+    def add_row(item)
+      ItemRow.new(window, item).tap do |row|
+        @rows[item.id] = row
+        listbox.append(row.build)
+      end
     end
 
     def toggle_collapsed

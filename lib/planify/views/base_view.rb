@@ -60,23 +60,62 @@ module Planify
         rebuild
       end
 
+      # Rows are reused across refreshes. Rebuilding every row on every item
+      # event is both wasteful and, with a MenuButton per row, enough widget
+      # churn to trip a GC bug in the introspection bindings — so only the
+      # rows that actually appeared or disappeared are touched, and the rest
+      # are refreshed in place.
       def rebuild
-        @rows = {}
-        while list_box.first_child
-          list_box.remove(list_box.first_child)
+        ordered.then do |items|
+          drop_removed(items.map(&:id))
+          sync_rows(items)
+          if items.empty?
+            stack.visible_child_name = "empty"
+          else
+            stack.visible_child_name = "list"
+          end
         end
+      end
 
-        ordered.each do |item|
-          ItemRow.new(window, item).build.tap do |row|
-            @rows[item.id] = row
-            list_box.append(row)
+      def drop_removed(ids)
+        (@rows.keys - ids).each do |id|
+          list_box.remove(@rows.delete(id))
+        end
+      end
+
+      def sync_rows(items)
+        items.each_with_index do |item, index|
+          if @rows.key?(item.id)
+            row_for(item.id).refresh
+          else
+            insert_row(item, index)
           end
         end
 
-        if items.empty?
-          stack.visible_child_name = "empty"
-        else
-          stack.visible_child_name = "list"
+        reorder(items)
+      end
+
+      def row_objects = @row_objects ||= {}
+
+      def row_for(id) = row_objects.fetch(id)
+
+      def insert_row(item, index)
+        ItemRow.new(window, item).tap do |row|
+          row_objects[item.id] = row
+          @rows[item.id] = row.build
+          list_box.insert(row.build, index)
+        end
+      end
+
+      # A row whose position changed is moved rather than recreated.
+      def reorder(items)
+        items.each_with_index do |item, index|
+          @rows[item.id].then do |row|
+            if row.index != index
+              list_box.remove(row)
+              list_box.insert(row, index)
+            end
+          end
         end
       end
 

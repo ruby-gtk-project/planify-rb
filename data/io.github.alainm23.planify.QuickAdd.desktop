@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Planify Quick Add
+Comment=Add a task to Planify
+Exec=planify-quick-add
+Icon=io.github.alainm23.planify
+Terminal=false
+Type=Application
+Categories=Utility;
+NoDisplay=true
+StartupNotify=true

@@ -113,15 +113,26 @@ module Planify
                                      !completed_today.empty?
       end
 
-      def fill(list, group)
-        while list.first_child
-          list.remove(list.first_child)
-        end
+      # Each list keeps its own row cache, so a refresh touches only what
+      # actually changed rather than rebuilding both sections.
+      def caches = @caches ||= Hash.new { |hash, key| hash[key] = {} }
 
-        group.each do |item|
-          ItemRow.new(window, item).build.tap do |row|
-            @rows[item.id] = row
-            list.append(row)
+      def fill(list, group)
+        caches[list].then do |cache|
+          ids = group.map(&:id)
+
+          (cache.keys - ids).each { |id| list.remove(cache.delete(id).build) }
+
+          group.each do |item|
+            if cache.key?(item.id)
+              cache.fetch(item.id).refresh
+            else
+              ItemRow.new(window, item).tap do |row|
+                cache[item.id] = row
+                @rows[item.id] = row.build
+                list.append(row.build)
+              end
+            end
           end
         end
       end

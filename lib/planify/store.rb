@@ -287,12 +287,18 @@ module Planify
     # Deleting a project takes its sections, its items and its subprojects with
     # it — SQLite cascades the sections, the rest is ours to sweep.
     def delete_project(project, queue: true)
+      # Same reason as for items: the calendar URL is needed after the record
+      # is gone.
       if queue
         enqueue(
+
           "project_delete",
+
           project,
+
           project.source_id,
-          "id" => project.id,
+          "id"           => project.id,
+          "calendar_url" => project.calendar_url.to_s,
         )
       end
       subprojects_of(project.id).each { |child| delete_project(child, queue: false) }
@@ -434,12 +440,14 @@ module Planify
     end
 
     def delete_item(item, queue: true)
+      # The record is gone by the time the queue is flushed, so the entry
+      # carries everything the server call will need to address it.
       if queue
         enqueue(
           "item_delete",
           item,
           source_id_of(item),
-          "id" => item.id,
+          delete_args(item),
         )
       end
       subitems_of(item.id).each { |subitem| delete_item(subitem, queue: false) }
@@ -544,6 +552,24 @@ module Planify
     # their project belongs to.
     def source_id_of(record)
       project(record.project_id).then { |owner| owner.nil? ? "" : owner.source_id.to_s }
+    end
+
+    def delete_args(item)
+      {
+        "id"         => item.id,
+        "ical_url"   => caldav_url(item),
+        "backend"    => project(item.project_id)&.backend_type.to_s,
+        "project_id" => item.project_id.to_s,
+        "section_id" => item.section_id.to_s,
+      }
+    end
+
+    def caldav_url(item)
+      begin
+        JSON.parse(item.extra_data.to_s)["ical_url"].to_s
+      rescue JSON::ParserError
+        ""
+      end
     end
 
     def enqueue(query, record, source_id, args = {})

@@ -16,6 +16,7 @@ module Planify
     end
 
     attr_reader :window
+    attr_accessor :on_finish
 
     def present(parent)
       dialog.tap do |d|
@@ -162,6 +163,7 @@ module Planify
         reset
       else
         dialog.close
+        on_finish&.call
       end
     end
 

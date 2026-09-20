@@ -6,6 +6,17 @@
 
 require "tmpdir"
 
+ENV["PLANIFY_TEST"] = "1"
+
+# Without a dconf daemon a GSettings write is silently dropped, so a test that
+# toggles a preference would read back the old value. The memory backend makes
+# settings behave, and keeps the run from touching the user's real dconf.
+ENV["GSETTINGS_BACKEND"] = "memory"
+
+# stdout is a pipe under the test runner, so it block-buffers; a killed run
+# would otherwise lose everything it had printed.
+$stdout.sync = true
+
 scratch = Dir.mktmpdir("planify-drive")
 ENV["XDG_DATA_HOME"] = scratch
 ENV["XDG_CONFIG_HOME"] = scratch
@@ -443,5 +454,122 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
     d.check("no label was added") { store.call.labels.size == before }
     window.call.window.visible_dialog&.close
     d.shot("24-duplicate-label")
+  end
+
+  d.step("All Tasks opens with its filter chips") do
+    window.call.go_all
+  end
+
+  d.step("it lists everything pending") do
+    window.call.instance_variable_get(:@views)["filter-all"].then do |view|
+      d.check("all-tasks view is showing") do
+        window.call.views_stack.visible_child_name == "filter-all"
+      end
+      d.check("no chips yet") { view.chips.empty? }
+      d.check("it holds every pending task") { view.items.size == store.call.pending.size }
+      @all_view = view
+    end
+    d.shot("25-all-tasks")
+  end
+
+  d.step("narrowing by priority") do
+    @all_view.add_chip("priority:#{Item::PRIORITY_1}")
+  end
+
+  d.step("the chip narrows the list") do
+    d.check("one chip") { @all_view.chips.size == 1 }
+    d.check("the chip bar is revealed") { @all_view.chips_bar.reveal_child? }
+    d.check("only P1 tasks remain") do
+      @all_view.items.all? { |item| item.priority.to_i == Item::PRIORITY_1 }
+    end
+    d.check("it is fewer than everything") { @all_view.items.size < store.call.pending.size }
+    d.check("the chip reads as the priority") do
+      @all_view.chip_title("priority:#{Item::PRIORITY_1}").include?("Priority 1")
+    end
+    d.shot("26-filtered")
+  end
+
+  d.step("chips intersect rather than widen") do
+    @all_view.add_chip("due-date:none")
+  end
+
+  d.step("the second chip narrows further") do
+    d.check("two chips") { @all_view.chips.size == 2 }
+    d.check("nothing matches both") { @all_view.items.empty? }
+    d.check("the empty state is showing") { @all_view.stack.visible_child_name == "empty" }
+    d.shot("27-intersected")
+  end
+
+  d.step("removing a chip widens again") do
+    @all_view.remove_chip("due-date:none")
+  end
+
+  d.step("it is back to the priority filter") do
+    d.check("one chip") { @all_view.chips.size == 1 }
+    d.check("P1 tasks are back") { !@all_view.items.empty? }
+  end
+
+  d.step("the priority filter view stands on its own") do
+    window.call.show_filter("priority-1")
+  end
+
+  d.step("it matches the chip-filtered list") do
+    window.call.instance_variable_get(:@views)["filter-priority-1"].then do |view|
+      d.check("priority view is showing") do
+        window.call.views_stack.visible_child_name == "filter-priority-1"
+      end
+      d.check("same tasks as the chip filter") do
+        view.items.map(&:id).sort == store.call.priority_items(Item::PRIORITY_1).map(&:id).sort
+      end
+    end
+    d.shot("28-priority-view")
+  end
+
+  d.step("a CalDAV account with Deck can be described") do
+    @caldav = Services::CalDAV.build_source(
+
+      "https://cloud.example.com",
+      "nathan",
+      "secret",
+      "nextcloud",
+      false,
+
+    )
+    store.call.insert_source(@caldav)
+  end
+
+  d.step("its URLs are derived correctly") do
+    d.check("stored") { !store.call.source(@caldav.id).nil? }
+    d.check("calendar home defaults conventionally") do
+      @caldav.calendar_home_url == "https://cloud.example.com/calendars/nathan/"
+    end
+    d.check("deck base url is derived") do
+      @caldav.deck_base_url == "https://cloud.example.com/index.php/apps/deck/api/v1.0"
+    end
+    d.check("deck is off until asked for") { @caldav["use_deck"] != true }
+    d.check("the sidebar grew a second account") do
+      window.call.sidebar.source_rows.size == 2
+    end
+    d.shot("29-caldav-account")
+  end
+
+  d.step("deleting a synced task queues what the server call needs") do
+    store.call.insert_project(Project.new(name: "Remote", source_id: @caldav.id)).then do |project|
+      @remote_item = Item.new(content: "Remote task", project_id: project.id)
+      store.call.insert_item(@remote_item)
+      Services::SyncQueue.clear(@caldav.id)
+      store.call.delete_item(@remote_item)
+    end
+  end
+
+  d.step("the delete entry carries the ids") do
+    Services::SyncQueue.all(@caldav.id).find { |e| e.query == "item_delete" }.then do |entry|
+      d.check("a delete was queued") { !entry.nil? }
+      d.check("it names the task") { entry.target_id == @remote_item.id }
+      d.check("it carries the project") do
+        entry.arguments["project_id"] == @remote_item.project_id
+      end
+    end
+    store.call.delete_source(@caldav)
   end
 end

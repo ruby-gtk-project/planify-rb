@@ -19,3 +19,8 @@ tmp/
 data/gschemas.compiled
 data/locale/
 data/planify.gresource
+vendor/cache/
+build-dir/
+repo/
+.flatpak-builder/
+io.github.alainm23.planify.json

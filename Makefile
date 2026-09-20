@@ -8,7 +8,7 @@ DATADIR := $(DESTDIR)$(PREFIX)/share
 
 LANGUAGES := $(notdir $(basename $(wildcard po/*.po)))
 
-.PHONY: run test resources install uninstall clean
+.PHONY: run test resources install uninstall manifest flatpak clean
 
 # Run out of the checkout, as a development build.
 run: resources
@@ -25,6 +25,7 @@ test: resources
 	bundle exec rubocop
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_load.rb
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_sync.rb
+	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_cli.rb
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data env -u DISPLAY -u WAYLAND_DISPLAY \
 		bundle exec ruby test/drive_main.rb
 	appstreamcli validate --no-net data/$(APP_ID).metainfo.xml.in.in || true
@@ -40,12 +41,21 @@ install: resources
 	cp -r lib/. $(PKGDIR)/lib/
 	cp -r data/. $(PKGDIR)/data/
 	install -m 755 bin/planify $(PKGDIR)/bin/planify
+	install -m 755 bin/planify-cli $(PKGDIR)/bin/planify-cli
+	install -m 755 bin/planify-quick-add $(PKGDIR)/bin/planify-quick-add
 	for language in $(LANGUAGES); do \
 		install -d $(PKGDIR)/data/locale/$$language/LC_MESSAGES; \
 		msgfmt --output $(PKGDIR)/data/locale/$$language/LC_MESSAGES/$(APP_ID).mo po/$$language.po; \
 	done
-	printf '#!/bin/sh\nexec %s/bin/planify "$$@"\n' '$(PREFIX)/share/$(APP_ID)' > $(BINDIR)/planify
-	chmod 755 $(BINDIR)/planify
+	for binary in planify planify-cli planify-quick-add; do \
+		printf '#!/bin/sh\nexec %s/bin/%s "$$@"\n' \
+			'$(PREFIX)/share/$(APP_ID)' "$$binary" > $(BINDIR)/$$binary; \
+		chmod 755 $(BINDIR)/$$binary; \
+	done
+	install -Dm 644 data/$(APP_ID).SearchProvider.ini \
+		$(DATADIR)/gnome-shell/search-providers/$(APP_ID).SearchProvider.ini
+	install -Dm 644 data/$(APP_ID).QuickAdd.desktop \
+		$(DATADIR)/applications/$(APP_ID).QuickAdd.desktop
 	install -Dm 644 data/$(APP_ID).gschema.xml \
 		$(DATADIR)/glib-2.0/schemas/$(APP_ID).gschema.xml
 	glib-compile-schemas --strict $(DATADIR)/glib-2.0/schemas
@@ -56,10 +66,25 @@ install: resources
 
 uninstall:
 	rm -rf $(PKGDIR)
-	rm -f $(BINDIR)/planify
+	rm -f $(BINDIR)/planify $(BINDIR)/planify-cli $(BINDIR)/planify-quick-add
+	rm -f $(DATADIR)/gnome-shell/search-providers/$(APP_ID).SearchProvider.ini
+	rm -f $(DATADIR)/applications/$(APP_ID).QuickAdd.desktop
 	rm -f $(DATADIR)/glib-2.0/schemas/$(APP_ID).gschema.xml
 	rm -f $(DATADIR)/icons/hicolor/scalable/apps/$(APP_ID).svg
 	rm -f $(DATADIR)/icons/hicolor/symbolic/apps/$(APP_ID)-symbolic.svg
 
+# Regenerate the manifest after changing the Gemfile: every gem is pinned in
+# it by path and checksum.
+manifest:
+	bundle cache --no-install
+	bundle exec ruby tools/generate-flatpak-manifest.rb
+
+flatpak: manifest
+	flatpak-builder --user --force-clean --repo=repo --install-deps-from=flathub \
+		build-dir $(APP_ID).json
+	flatpak --user remote-add --no-gpg-verify --if-not-exists planify repo
+	flatpak --user install --reinstall --assumeyes planify $(APP_ID)
+
 clean:
 	rm -rf tmp data/locale data/gschemas.compiled data/planify.gresource
+	rm -rf build-dir repo .flatpak-builder
