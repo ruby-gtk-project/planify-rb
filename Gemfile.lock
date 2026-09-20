@@ -8,6 +8,7 @@ GEM
     atk (4.3.9)
       glib2 (= 4.3.9)
       rake
+    base64 (0.3.0)
     cairo (1.18.5)
       pkg-config (>= 1.2.2)
       red-colors
@@ -74,6 +75,7 @@ GEM
       json
       matrix
     regexp_parser (2.12.0)
+    rexml (3.4.4)
     rubocop (1.91.0)
       json (>= 2.3)
       language_server-protocol (~> 3.17.0.2)
@@ -119,8 +121,10 @@ PLATFORMS
 
 DEPENDENCIES
   adwaita
+  base64
   gettext
   gtk4
+  rexml
   rubocop
   sqlite3
 

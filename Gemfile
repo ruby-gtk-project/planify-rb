@@ -3,6 +3,8 @@
 source "https://rubygems.org"
 
 gem "adwaita"
+gem "base64"
+gem "rexml"
 gem "gettext"
 gem "gtk4"
 gem "sqlite3"

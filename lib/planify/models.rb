@@ -15,9 +15,21 @@ module Planify
 
     def self.table = name.split("::").last.concat("s")
 
+    # Every table but Queue keys on `id`; Queue keys on `uuid`.
+    def self.key = "id"
+
+    # Boolean columns are stored as 1/0 integers, which is what SQLite and the
+    # Vala build both expect.
+    def self.flag(value) = value ? 1 : 0
+
+    # Only Queue needs a column whose SQL name differs from its accessor.
+    def self.column_for(name) = name.to_s
+
     def self.from_row(row)
       new.tap do |record|
-        column_names.each { |column| record.public_send(:"#{column}=", row[column.to_s]) }
+        column_names.each do |column|
+          record.public_send(:"#{column}=", row[column_for(column)])
+        end
       end
     end
 
@@ -25,12 +37,16 @@ module Planify
       self.class.column_names.each { |column| instance_variable_set(:"@#{column}", nil) }
       defaults.each { |column, value| public_send(:"#{column}=", value) }
       attributes.each { |column, value| public_send(:"#{column}=", value) }
-      @id ||= SecureRandom.uuid
+      if id.nil?
+        self.id = SecureRandom.uuid
+      end
     end
 
     def defaults = {}
 
     def to_row = self.class.column_names.to_h { |column| [column, public_send(column)] }
+
+    def key_value = public_send(self.class.key)
 
     def ==(other) = other.is_a?(self.class) && other.id == id
 
@@ -373,6 +389,314 @@ module Planify
         file_size: "",
         file_path: "",
       }
+    end
+  end
+
+  # core/Objects/Source.vala. `data` is a JSON blob whose shape depends on the
+  # source type — Todoist tokens or CalDAV credentials — which is why it is
+  # kept as a hash rather than split into columns the schema does not have.
+  class Source < Record
+    columns :id,
+      :source_type,
+      :display_name,
+      :added_at,
+      :updated_at,
+      :is_visible,
+      :child_order,
+      :sync_server,
+      :last_sync,
+      :data
+
+    TODOIST_DEFAULTS = {
+      "access_token"    => "",
+      "sync_token"      => "*",
+      "user_id"         => "",
+      "user_image_id"   => "",
+      "user_email"      => "",
+      "user_name"       => "",
+      "user_avatar"     => "",
+      "user_is_premium" => false,
+      "api_version"     => "v1",
+    }.freeze
+
+    CALDAV_DEFAULTS = {
+      "server_url"        => "",
+      "username"          => "",
+      "password"          => "",
+      "user_displayname"  => "",
+      "user_email"        => "",
+      "calendar_home_url" => "",
+      "caldav_type"       => "nextcloud",
+      "ignore_ssl"        => false,
+      "use_deck"          => false,
+      "deck_last_sync"    => "",
+    }.freeze
+
+    def defaults
+      {
+        source_type:  "local",
+        display_name: "",
+        added_at:     Time.now.iso8601,
+        updated_at:   Time.now.iso8601,
+        is_visible:   1,
+        child_order:  0,
+        sync_server:  0,
+        last_sync:    "",
+        data:         "{}",
+      }
+    end
+
+    def local? = source_type == "local"
+
+    def todoist? = source_type == "todoist"
+
+    def caldav? = source_type == "caldav"
+
+    def visible? = is_visible.to_i == 1
+
+    def sync_server? = sync_server.to_i == 1
+
+    def payload
+      begin
+        JSON.parse(data.to_s)
+      rescue JSON::ParserError
+        {}
+      end.then { |parsed| parsed.is_a?(Hash) ? parsed : {} }
+    end
+
+    def payload_defaults
+      if todoist?
+        TODOIST_DEFAULTS
+      elsif caldav?
+        CALDAV_DEFAULTS
+      else
+        {}
+      end
+    end
+
+    def [](key) = payload_defaults.merge(payload)[key]
+
+    def []=(key, value)
+      self.data = JSON.generate(payload_defaults.merge(payload).merge(key => value))
+    end
+
+    def merge_payload(values)
+      self.data = JSON.generate(payload_defaults.merge(payload).merge(values))
+    end
+
+    def header_text = display_name.to_s
+
+    def subheader_text
+      if todoist?
+        _("Todoist")
+      elsif caldav?
+        self["caldav_type"] == "nextcloud" ? _("Nextcloud") : _("CalDAV")
+      else
+        _("On This Computer")
+      end
+    end
+
+    def user_displayname
+      if todoist?
+        self["user_name"].to_s
+      elsif caldav?
+        self["user_displayname"].to_s
+      else
+        ""
+      end
+    end
+
+    def user_email
+      if todoist?
+        self["user_email"].to_s
+      elsif caldav?
+        self["user_email"].to_s
+      else
+        ""
+      end
+    end
+
+    # A CalDAV home defaults to the conventional /calendars/<user>/ path when
+    # discovery has not filled one in.
+    def calendar_home_url
+      self["calendar_home_url"].to_s.then do |url|
+        if url.empty?
+          File.join(
+            server_url,
+            "calendars",
+            self["username"].to_s,
+            "/",
+          )
+        else
+          url.end_with?("/") ? url : "#{url}/"
+        end
+      end
+    end
+
+    def server_url
+      self["server_url"].to_s.then { |url| url.end_with?("/") ? url : "#{url}/" }
+    end
+
+    # Nextcloud Deck hangs off the host, not the CalDAV path.
+    def deck_base_url
+      begin
+        URI.parse(server_url).then do |uri|
+          if uri.port && uri.port != uri.default_port
+            port = ":#{uri.port}"
+          else
+            port = ""
+          end
+          "#{uri.scheme}://#{uri.host}#{port}/index.php/apps/deck/api/v1.0"
+        end
+      rescue URI::Error
+        ""
+      end
+    end
+
+    def icon_name
+      if todoist?
+        "todoist"
+      elsif caldav?
+        self["caldav_type"] == "nextcloud" ? "nextcloud" : "cloud-outline-thick-symbolic"
+      else
+        "computer-symbolic"
+      end
+    end
+
+    # A Todoist source still on the v9 sync API has to re-authorise before it
+    # can talk to the current one.
+    def needs_migration?
+      todoist? && ["", "v9"].include?(self["api_version"].to_s)
+    end
+
+    def projects = Store.instance.projects_by_source(id)
+  end
+
+  # The offline write queue: every change to a synced object is recorded here
+  # and replayed when the server is next reachable.
+  class QueueEntry < Record
+    # The column is `object_id`; the accessor is not, because redefining
+    # Object#object_id on a model breaks equality and identity everywhere.
+    columns :uuid, :target_id, :query, :temp_id, :args, :source_id, :date_added
+
+    COLUMN_ALIASES = { target_id: "object_id" }.freeze
+
+    def self.column_for(name) = COLUMN_ALIASES.fetch(name, name.to_s)
+
+    def self.table = "Queue"
+
+    # The primary key is `uuid`, not `id`, so the generic writers need telling.
+    def self.key = "uuid"
+
+    def self.from_row(row)
+      new(uuid: row["uuid"]).tap do |record|
+        column_names.each do |column|
+          record.public_send(:"#{column}=", row[column_for(column)])
+        end
+      end
+    end
+
+    def defaults
+      {
+        target_id:  "",
+        query:      "",
+        temp_id:    "",
+        args:       "{}",
+        source_id:  "",
+        date_added: Time.now.iso8601,
+      }
+    end
+
+    def id = uuid
+
+    def id=(value)
+      self.uuid = value
+    end
+
+    def arguments
+      begin
+        JSON.parse(args.to_s)
+      rescue JSON::ParserError
+        {}
+      end
+    end
+  end
+
+  # One recorded change to an item, written by the database triggers and read
+  # back by the activity view.
+  class ObjectEvent
+    KEY_TITLES = {
+      "content"     => -> { _("Name") },
+      "description" => -> { _("Description") },
+      "due"         => -> { _("Schedule") },
+      "priority"    => -> { _("Priority") },
+      "labels"      => -> { _("Labels") },
+      "pinned"      => -> { _("Pinned") },
+      "checked"     => -> { _("Completed") },
+      "section"     => -> { _("Section") },
+      "project"     => -> { _("Project") },
+      "deadline"    => -> { _("Deadline") },
+      "parent"      => -> { _("Parent task") },
+    }.freeze
+
+    def initialize(row)
+      @row = row
+    end
+
+    attr_reader :row
+
+    def event_type = row["event_type"]
+
+    def event_date = Datetime.parse(row["event_date"])
+
+    def target_id = row["object_id"]
+
+    def key = row["object_key"]
+
+    def old_value = row["object_old_value"].to_s
+
+    def new_value = row["object_new_value"].to_s
+
+    def inserted? = event_type == "insert"
+
+    def title
+      if inserted?
+        _("Task created")
+      else
+        _("%s changed") % KEY_TITLES.fetch(key, -> { key.to_s }).call
+      end
+    end
+
+    # Raw column values are not what a person wants to read: a due column is
+    # JSON, a project is an id, a boolean is 0 or 1.
+    def describe(value)
+      case key
+      when "due"      then describe_due(value)
+      when "project"  then Store.instance.project(value)&.name.to_s
+      when "section"  then Store.instance.section(value)&.name.to_s
+      when "parent"   then Store.instance.item(value)&.content.to_s
+      when "labels"   then describe_labels(value)
+      when "priority" then Item.new(priority: value.to_i).priority_text
+      when "pinned", "checked" then value.to_i == 1 ? _("Yes") : _("No")
+      when "deadline" then Datetime.relative(Datetime.parse(value))
+      else value
+      end
+    end
+
+    def describe_due(value)
+      begin
+        JSON.parse(value.to_s)["date"].then { |date| Datetime.relative(Datetime.parse(date)) }
+      rescue JSON::ParserError, NoMethodError
+        ""
+      end
+    end
+
+    def describe_labels(value)
+      begin
+        JSON.parse(value.to_s).filter_map { |id| Store.instance.label(id)&.name }.join(", ")
+      rescue JSON::ParserError
+        ""
+      end
     end
   end
 end

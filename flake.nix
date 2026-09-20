@@ -27,6 +27,7 @@
             harfbuzz
             libyaml
             sqlite
+            evolution-data-server
             # `make test` validates the appstream and desktop metadata.
             appstream
             desktop-file-utils
@@ -70,7 +71,11 @@
           shellHook = ''
             export BUNDLE_PATH="$PWD/vendor/bundle"
             export BUNDLE_BUILD__GTK4="--use-system-libraries"
-            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.libadwaita}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+            # libecal and libedataserver have no Ruby gems; the calendar-event
+            # service loads them straight from their typelibs, so both the
+            # typelib and the shared library have to be findable.
+            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.libadwaita}/lib/girepository-1.0:${pkgs.evolution-data-server}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+            export LD_LIBRARY_PATH="${pkgs.evolution-data-server}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           '';
         };
       }

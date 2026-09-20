@@ -24,6 +24,7 @@ resources:
 test: resources
 	bundle exec rubocop
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_load.rb
+	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_sync.rb
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data env -u DISPLAY -u WAYLAND_DISPLAY \
 		bundle exec ruby test/drive_main.rb
 	appstreamcli validate --no-net data/$(APP_ID).metainfo.xml.in.in || true

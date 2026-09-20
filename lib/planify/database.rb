@@ -109,6 +109,52 @@ module Planify
         );
       SQL
       <<~SQL,
+        CREATE TABLE IF NOT EXISTS Sources (
+            id                  TEXT PRIMARY KEY,
+            source_type         TEXT NOT NULL,
+            display_name        TEXT,
+            added_at            TEXT,
+            updated_at          TEXT,
+            is_visible          INTEGER,
+            child_order         INTEGER,
+            sync_server         INTEGER,
+            last_sync           TEXT,
+            data                TEXT
+        );
+      SQL
+      <<~SQL,
+        CREATE TABLE IF NOT EXISTS Queue (
+            uuid       TEXT PRIMARY KEY,
+            object_id  TEXT,
+            query      TEXT,
+            temp_id    TEXT,
+            args       TEXT,
+            source_id  TEXT,
+            date_added TEXT
+        );
+      SQL
+      <<~SQL,
+        CREATE TABLE IF NOT EXISTS CurTempIds (
+            id          TEXT PRIMARY KEY,
+            temp_id     TEXT,
+            object      TEXT
+        );
+      SQL
+      <<~SQL,
+        CREATE TABLE IF NOT EXISTS OEvents (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type          TEXT,
+            event_date          DATETIME DEFAULT (datetime('now','localtime')),
+            object_id           TEXT,
+            object_type         TEXT,
+            object_key          TEXT,
+            object_old_value    TEXT,
+            object_new_value    TEXT,
+            parent_item_id      TEXT,
+            parent_project_id   TEXT
+        );
+      SQL
+      <<~SQL,
         CREATE TABLE IF NOT EXISTS Attachments (
             id              TEXT PRIMARY KEY,
             item_id         TEXT,
@@ -132,9 +178,59 @@ module Planify
       @db.execute("PRAGMA foreign_keys = ON")
       SCHEMA.each { |sql| @db.execute_batch(sql) }
       migrate
+      create_triggers
     end
 
     attr_reader :path
+
+
+    # The change history the item detail pane shows is recorded by SQLite
+    # itself, so an edit made anywhere — including by the Vala build against
+    # the same file — lands in OEvents. Column, event key, and the value pair
+    # each trigger records, matching create_triggers upstream.
+    TRACKED_COLUMNS = {
+      "content"       => "content",
+      "description"   => "description",
+      "due"           => "due",
+      "priority"      => "priority",
+      "labels"        => "labels",
+      "pinned"        => "pinned",
+      "checked"       => "checked",
+      "section_id"    => "section",
+      "project_id"    => "project",
+      "deadline_date" => "deadline",
+      "parent_id"     => "parent",
+    }.freeze
+
+    INSERT_TRIGGER = <<~SQL
+      CREATE TRIGGER IF NOT EXISTS after_insert_item
+      AFTER INSERT ON Items
+      BEGIN
+          INSERT OR IGNORE INTO OEvents (event_type, object_id,
+              object_type, object_key, object_old_value, object_new_value, parent_project_id)
+          VALUES ('insert', NEW.id, 'item', 'content', NEW.content,
+              NEW.content, NEW.project_id);
+      END;
+    SQL
+
+    def create_triggers
+      @db.execute_batch(INSERT_TRIGGER)
+
+      TRACKED_COLUMNS.each do |column, key|
+        @db.execute_batch(<<~SQL)
+          CREATE TRIGGER IF NOT EXISTS after_update_#{key}_item
+          AFTER UPDATE ON Items
+          FOR EACH ROW
+          WHEN NEW.#{column} != OLD.#{column}
+          BEGIN
+              INSERT OR IGNORE INTO OEvents (event_type, object_id,
+                  object_type, object_key, object_old_value, object_new_value, parent_project_id)
+              VALUES ('update', NEW.id, 'item', '#{key}', OLD.#{column},
+                  NEW.#{column}, NEW.project_id);
+          END;
+        SQL
+      end
+    end
 
     # Older Planify databases predate some columns. Adding them back is the
     # whole of what upstream's patch_database does that matters locally.
@@ -155,6 +251,7 @@ module Planify
           "due_date"            => "TEXT",
         },
         "Sections" => { "description" => "TEXT", "hidded" => "INTEGER", "color" => "TEXT" },
+        "Sources"  => { "sync_server" => "INTEGER", "last_sync" => "TEXT" },
       }.each do |table, columns|
         existing = @db.table_info(table).map { |column| column["name"] }
 
@@ -177,19 +274,37 @@ module Planify
 
     def all(table) = @db.execute("SELECT * FROM #{table}")
 
-    def insert(record)
-      columns = record.class.column_names
+    def query(sql, binds = []) = @db.execute(sql, binds)
+
+    def execute(sql, binds = []) = @db.execute(sql, binds)
+
+    # OEvents has an autoincrement id, so it is written directly rather than
+    # through a Record.
+    def events_for_item(item_id)
       @db.execute(
-        "INSERT OR REPLACE INTO #{record.class.table} (#{columns.join(', ')}) " \
-        "VALUES (#{(['?'] * columns.size).join(', ')})",
-        columns.map { |column| record.public_send(column) },
+        "SELECT * FROM OEvents WHERE object_id = ? ORDER BY event_date DESC, id DESC",
+        [item_id],
       )
+    end
+
+    def insert(record)
+      record.class.column_names.then do |columns|
+        @db.execute(
+          "INSERT OR REPLACE INTO #{record.class.table} " \
+          "(#{columns.map { |c| record.class.column_for(c) }.join(', ')}) " \
+          "VALUES (#{(['?'] * columns.size).join(', ')})",
+          columns.map { |column| record.public_send(column) },
+        )
+      end
     end
 
     alias update insert
 
     def delete(record)
-      @db.execute("DELETE FROM #{record.class.table} WHERE id = ?", [record.id])
+      @db.execute(
+        "DELETE FROM #{record.class.table} WHERE #{record.class.key} = ?",
+        [record.key_value],
+      )
     end
 
     def empty?
