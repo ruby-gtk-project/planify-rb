@@ -1,0 +1,28 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# A development run: the schema is compiled into data/ rather than installed
+# system-wide, and the database is kept out of the real user data directory so
+# a dev run cannot damage real tasks.
+root = File.expand_path("..", __dir__)
+
+ENV["GSETTINGS_SCHEMA_DIR"] = File.join(root, "data")
+ENV["XDG_DATA_HOME"] ||= File.join(root, "tmp", "data")
+
+Dir.chdir(File.join(root, "data")) do
+  system("glib-compile-schemas", "--strict", ".") || abort("glib-compile-schemas failed")
+  system(
+
+    "glib-compile-resources",
+
+    "--sourcedir=.",
+
+    "--target=planify.gresource",
+    "io.github.alainm23.planify.gresource.xml",
+  ) ||
+    abort("glib-compile-resources failed")
+end
+
+require_relative "../lib/planify"
+
+Planify::Application.new.build.run([$PROGRAM_NAME])

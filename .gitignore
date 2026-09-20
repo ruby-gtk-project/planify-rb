@@ -12,3 +12,10 @@ planify*txt
 .buildconfig
 .DS_Store
 .kiro
+
+vendor/
+.direnv/
+tmp/
+data/gschemas.compiled
+data/locale/
+data/planify.gresource

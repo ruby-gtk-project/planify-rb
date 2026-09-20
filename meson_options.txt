@@ -1,7 +1,0 @@
-option('tracing', type: 'boolean', value: false, description: 'add extra debugging information')
-option('profile', type: 'combo', choices: ['default', 'development'], value: 'default')
-option('spelling', type: 'feature')
-option('portal', type : 'boolean', description: 'build with xdg-portal support for ')
-option('evolution', type : 'boolean', description: 'build with evolution for integration with evolution calendars')
-option('goa', type : 'boolean', description: 'build with GNOME Online Accounts support for detecting linked Nextcloud/CalDAV accounts')
-option('manpage', type: 'boolean', value: false, description: 'install man page')

@@ -1,3 +1,0 @@
-[submodule "subprojects/chrono"]
-	path = subprojects/chrono
-	url = https://github.com/alainm23/chrono.git
