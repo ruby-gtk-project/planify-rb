@@ -2,53 +2,39 @@
 
 module Planify
   module Dialogs
-    # The shortcuts window, listing the accelerators Application registers.
+    # The shortcuts window. Its contents come from ActionManager, so it cannot
+    # drift from the accelerators the application actually installs.
     class Shortcuts
-      GROUPS = {
-        -> { _("General") }    => [
-          [-> { _("Open Quick Find") }, "<Control>f"],
-          [-> { _("Preferences") }, "<Control>comma"],
-          [-> { _("Keyboard Shortcuts") }, "<Control>question"],
-          [-> { _("Quit") }, "<Control>q"],
-        ],
-        -> { _("Tasks") }      => [
-          [-> { _("New Task") }, "<Control>n"],
-          [-> { _("New Project") }, "<Control><Shift>n"],
-          [-> { _("Sync") }, "<Control>s"],
-        ],
-        -> { _("Navigation") } => [
-          [-> { _("Inbox") }, "<Control>1"],
-          [-> { _("Today") }, "<Control>2"],
-          [-> { _("Scheduled") }, "<Control>3"],
-          [-> { _("Labels") }, "<Control>4"],
-          [-> { _("Pinboard") }, "<Control>5"],
-          [-> { _("Toggle Sidebar") }, "F9"],
-        ],
-      }.freeze
-
       def present(parent)
         dialog.tap do |d|
-          d.child = page
+          d.child = scrolled
+          scrolled.child = page
 
-          GROUPS.each do |title, shortcuts|
-            page.add(group(title.call, shortcuts))
+          Services::ActionManager::GROUPS.each do |(title, actions)|
+            page.add(group(title.call, actions))
           end
 
           d.present(parent)
         end
       end
 
-      def group(title, shortcuts)
+      def group(title, actions)
         Adwaita::PreferencesGroup.new.tap do |g|
           g.title = title
-          shortcuts.each { |(label, accel)| g.add(shortcut_row(label.call, accel)) }
+          actions.each { |action| g.add(shortcut_row(action)) }
         end
       end
 
-      def shortcut_row(label, accel)
+      def shortcut_row(action)
         Adwaita::ActionRow.new.tap do |row|
-          row.title = label
-          row.add_suffix(Gtk::ShortcutLabel.new(accel).tap { |s| s.valign = :center })
+          row.title = Services::ActionManager.title_for(action)
+          row.add_suffix(accel_label(action))
+        end
+      end
+
+      def accel_label(action)
+        Gtk::ShortcutLabel.new(Services::ActionManager.accel_for(action)).tap do |label|
+          label.valign = :center
         end
       end
 
@@ -60,10 +46,15 @@ module Planify
         end
       end
 
-      def page
-        @page ||= Adwaita::PreferencesPage.new.tap do |p|
-          p.title = _("Keyboard Shortcuts")
+      def scrolled
+        @scrolled ||= Gtk::ScrolledWindow.new.tap do |scroll|
+          scroll.hscrollbar_policy = :never
+          scroll.vexpand = true
         end
+      end
+
+      def page
+        @page ||= Adwaita::PreferencesPage.new.tap { |p| p.title = _("Keyboard Shortcuts") }
       end
     end
   end

@@ -14,7 +14,7 @@ module Planify
 
       def store = Store.instance
 
-      def present(parent)
+      def present(parent, term = nil)
         dialog.tap do |d|
           d.child = toolbar
 
@@ -41,6 +41,9 @@ module Planify
           end
 
           d.present(parent)
+          unless term.to_s.empty?
+            search_entry.text = term.to_s
+          end
           search_entry.grab_focus
         end
       end

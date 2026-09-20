@@ -298,7 +298,25 @@ module Planify
       end
     end
 
-    alias update insert
+    # A real UPDATE, not INSERT OR REPLACE: the change-history triggers are
+    # AFTER UPDATE, and a replace fires DELETE + INSERT instead, so the
+    # history would silently never be written.
+    def update(record)
+      record.class.column_names.reject { |c| c.to_s == record.class.key }.then do |columns|
+        @db.execute(
+          "UPDATE #{record.class.table} SET " \
+          "#{columns.map { |c| "#{record.class.column_for(c)} = ?" }.join(', ')} " \
+          "WHERE #{record.class.key} = ?",
+          columns.map { |column| record.public_send(column) } + [record.key_value],
+        ).then do
+          # A row that is not there yet — a record built before it was
+          # inserted — is written rather than silently dropped.
+          if @db.changes.zero?
+            insert(record)
+          end
+        end
+      end
+    end
 
     def delete(record)
       @db.execute(

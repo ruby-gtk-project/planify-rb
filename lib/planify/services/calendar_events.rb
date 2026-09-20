@@ -56,7 +56,7 @@ module Planify
 
       def registry
         @registry ||= ::EDataServer::SourceRegistry.new(nil)
-      rescue StandardError => error
+      rescue StandardError, NotImplementedError => error
         LogService.warn("Calendar", "no source registry: #{error.message}")
         nil
       end
@@ -70,14 +70,18 @@ module Planify
           registry.list_sources(::EDataServer::SOURCE_EXTENSION_CALENDAR)
                   .select { |source| selected?(source) }
         end
-      rescue StandardError => error
+      rescue StandardError, NotImplementedError => error
         LogService.warn("Calendar", "listing failed: #{error.message}")
         []
       end
 
       def all_sources
-        registry.nil? ? [] : registry.list_sources(::EDataServer::SOURCE_EXTENSION_CALENDAR)
-      rescue StandardError
+        if registry.nil?
+          []
+        else
+          registry.list_sources(::EDataServer::SOURCE_EXTENSION_CALENDAR)
+        end
+      rescue StandardError, NotImplementedError
         []
       end
 
@@ -111,7 +115,7 @@ module Planify
           30,
           nil,
         )
-      rescue StandardError => error
+      rescue StandardError, NotImplementedError => error
         LogService.warn("Calendar", "#{source.display_name}: #{error.message}")
         nil
       end
@@ -136,19 +140,53 @@ module Planify
         end
       end
 
+      # Two query methods exist and which of them the Ruby binding can marshal
+      # depends on the introspection data: as_comps returns a GSList with
+      # transfer-everything, which the binding raises NotImplementedError on.
+      # The plain list is tried first for that reason, and an unsupported
+      # binding turns the feature off rather than taking the view down —
+      # NotImplementedError is a ScriptError, so a bare StandardError rescue
+      # would not have caught it.
+      QUERIES = %i[get_object_list_sync get_object_list_as_comps_sync].freeze
+
       def events_for(source, from, to)
         client_for(source).then do |client|
           if client.nil?
             []
           else
-            client.get_object_list_as_comps_sync(query_for(from, to), nil).then do |result|
-              components(result).filter_map { |component| to_event(component, source) }
-            end
+            query(client, query_for(from, to)).filter_map { |object| to_event(object, source) }
           end
         end
-      rescue StandardError => error
+      rescue StandardError, NotImplementedError => error
         LogService.debug("Calendar", "query failed: #{error.message}")
         []
+      end
+
+      def query(client, expression)
+        QUERIES.filter_map { |method| attempt_query(client, method, expression) }
+               .first
+               .then do |result|
+          if result.nil?
+            disable("this build of libecal cannot be queried from Ruby")
+            []
+          else
+            result
+          end
+        end
+      end
+
+      def attempt_query(client, method, expression)
+        components(client.public_send(method, expression, nil))
+      rescue NoMethodError, NotImplementedError => error
+        LogService.debug("Calendar", "#{method} unusable: #{error.message}")
+        nil
+      end
+
+      # Once a query has proved unusable there is no point retrying it on
+      # every refresh; the feature is simply off for this session.
+      def disable(reason)
+        LogService.info("Calendar", "disabled: #{reason}")
+        @available = false
       end
 
       # The binding hands back either the component list or a [ok, list] pair
@@ -161,6 +199,8 @@ module Planify
         end
       end
 
+      # get_object_list_sync hands back ICalGLib components rather than ECal
+      # ones; both answer the same accessors through the wrapper below.
       def to_event(component, source)
         Event.new(
           uid:         component.uid.to_s,
@@ -173,7 +213,7 @@ module Planify
           source_name: source.display_name.to_s,
           color:       source_color(source),
         ).then { |event| event.start_time.nil? ? nil : finish(event) }
-      rescue StandardError => error
+      rescue StandardError, NotImplementedError => error
         LogService.debug("Calendar", "component skipped: #{error.message}")
         nil
       end
@@ -188,8 +228,37 @@ module Planify
         end
       end
 
+      # ICal components expose properties by name where ECal ones expose
+      # accessors, so each field is tried both ways.
+      ICAL_PROPERTIES = {
+        summary:  "SUMMARY",
+        location: "LOCATION",
+        dtstart:  "DTSTART",
+        dtend:    "DTEND",
+      }.freeze
+
       def safe(component, method)
-        component.public_send(method)
+        if component.respond_to?(method)
+          component.public_send(method)
+        else
+          ical_property(component, ICAL_PROPERTIES.fetch(method, nil))
+        end
+      rescue StandardError, NotImplementedError
+        nil
+      end
+
+      def ical_property(component, name)
+        if name.nil? || !component.respond_to?(:get_first_property)
+          nil
+        else
+          component.get_first_property(ical_kind(name))
+        end
+      rescue StandardError, NotImplementedError
+        nil
+      end
+
+      def ical_kind(name)
+        ::ICalGLib.const_get(:PropertyKind).const_get(:"#{name}_PROPERTY")
       rescue StandardError
         nil
       end
@@ -204,6 +273,8 @@ module Planify
       # the fields are read directly rather than through as_timet, so an
       # all-day date does not pick up a spurious midnight-UTC offset.
       def ical_to_time(value)
+        # An ICal property wraps its value; an ECal ComponentDateTime wraps an
+        # ICal time. Both unwrap through `value`.
         ical_time(value).then do |time|
           if time.nil?
             nil

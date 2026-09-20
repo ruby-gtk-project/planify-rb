@@ -66,7 +66,7 @@ module Planify
           list_box.remove(list_box.first_child)
         end
 
-        items.each do |item|
+        ordered.each do |item|
           ItemRow.new(window, item).build.tap do |row|
             @rows[item.id] = row
             list_box.append(row)
@@ -82,6 +82,16 @@ module Planify
 
       def add_task
         QuickAdd.new(window, **quick_add_defaults).present(window.window)
+      end
+
+      # Views that mix in Sorting order their items; the rest take them as the
+      # store handed them over.
+      def ordered
+        if respond_to?(:apply_sort)
+          apply_sort(items)
+        else
+          items
+        end
       end
 
       # --- subclass contract ----------------------------------------------

@@ -6,16 +6,21 @@ module Planify
     # description, parent, layout — and the "move task to project" variant of
     # the same picker.
     class ProjectDialog
-      def initialize(window, project: nil)
+      def initialize(window, project: nil, source: nil)
         @window = window
         @project = project
+        @source = source
         @editing = !project.nil?
       end
 
-      attr_reader :window, :project
+      attr_reader :window, :project, :source
 
       def self.move(window, item)
-        MoveDialog.new(window, item)
+        MoveDialog.new(window, [item])
+      end
+
+      def self.move_many(window, items)
+        MoveDialog.new(window, items)
       end
 
       def store = Store.instance
@@ -139,7 +144,11 @@ module Planify
         end
       end
 
-      def target = project || Project.new(source_id: "local")
+      # A project created from an account's "+" belongs to that account; one
+      # created from the menu belongs to the local source.
+      def target
+        project || Project.new(source_id: (source || Store.instance.local_source)&.id.to_s)
+      end
 
       def persist(record)
         if @editing
@@ -237,12 +246,14 @@ module Planify
 
     # "Move" from a task's menu: pick a project, and a section within it.
     class MoveDialog
-      def initialize(window, item)
+      def initialize(window, items)
         @window = window
-        @item = item
+        @items = Array(items)
       end
 
-      attr_reader :window, :item
+      attr_reader :window, :items
+
+      def item = items.first
 
       def store = Store.instance
 
@@ -266,7 +277,7 @@ module Planify
             end
           end
 
-          header.title_widget = Adwaita::WindowTitle.new(_("Move To"), item.content.to_s)
+          header.title_widget = Adwaita::WindowTitle.new(_("Move To"), move_subtitle)
           d.present(parent)
         end
       end
@@ -287,11 +298,31 @@ module Planify
       end
 
       def move_to((project, section))
-        item.project_id = project.id
-        item.section_id = section&.id.to_s
-        item.child_order = store.next_child_order(item.project_id, item.section_id)
-        store.update_item(item)
-        window.toast(_("Task moved to %s") % project.name)
+        items.each do |moved|
+          moved.project_id = project.id
+          moved.section_id = section&.id.to_s
+          moved.child_order = store.next_child_order(moved.project_id, moved.section_id)
+          store.update_item(moved)
+        end
+
+        window.toast(
+          n_("Task moved to %s", "%d tasks moved", items.size) % moved_arguments(project),
+        )
+      end
+
+      # One task names its destination; several report their count, because
+      # the destination is the same for all of them and the number is what
+      # the user needs confirmed.
+      def moved_arguments(project)
+        items.size == 1 ? project.name : items.size
+      end
+
+      def move_subtitle
+        if items.size == 1
+          item.content.to_s
+        else
+          n_("%d task", "%d tasks", items.size) % items.size
+        end
       end
 
       def dialog

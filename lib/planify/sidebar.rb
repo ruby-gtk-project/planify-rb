@@ -1,80 +1,61 @@
 # frozen_string_literal: true
 
 module Planify
-  # Layouts/Sidebar.vala: the filter tiles, the favourites header and the
-  # project tree under "On This Computer". Upstream draws the filters either as
-  # a FlowBox of tiles or a ListBox of rows depending on `filters-list-view`;
-  # both are here and the setting switches between them live.
+  # src/Layouts/Sidebar.vala. The filter tiles, favourites, one group per
+  # account, and the update popup over the bottom. The project tree itself
+  # belongs to each account's SidebarSourceRow.
   class Sidebar
-    FILTERS = [
-      { key: "inbox", title: -> { _("Inbox") }, icon: "mailbox-symbolic", color: "#3584e4" },
-      { key: "today", title: -> { _("Today") }, icon: "star-outline-thick-symbolic", color: "#33d17a" },
-      { key: "scheduled", title: -> { _("Scheduled") }, icon: "month-symbolic", color: "#9141ac" },
-      { key: "labels", title: -> { _("Labels") }, icon: "tag-outline-symbolic", color: "#ff7800" },
-      { key: "pinboard", title: -> { _("Pinboard") }, icon: "pin-symbolic", color: "#e01b24" },
-    ].freeze
-
     def initialize(window)
       @window = window
-      @project_rows = {}
       @favorite_rows = {}
-      @filter_rows = {}
+      @source_rows = {}
     end
 
-    attr_reader :window
+    attr_reader :window, :source_rows
+
+    def store = Store.instance
 
     def build
-      @build ||= scrolled.tap do |scroll|
-        scroll.child = content_box
+      @build ||= overlay.tap do |o|
+        o.child = scrolled
+        o.add_overlay(update_revealer)
+
+        scrolled.child = content_box
 
         content_box.tap do |box|
-          box.append(filters_revealer)
+          box.append(filters.build)
           box.append(favorites_header)
           box.append(favorites_listbox)
-          box.append(projects_header)
-          box.append(projects_listbox)
-
-          filters_revealer.child = filters_container
-
-          projects_header.tap do |header|
-            header.append(projects_label)
-            header.append(add_project_button)
-
-            add_project_button.signal_connect("clicked") { window.new_project }
-          end
+          box.append(sources_box)
 
           favorites_header.append(favorites_label)
-
-          projects_listbox.signal_connect("row-activated") do |_, row|
-            @project_rows.key(row).then do |project_id|
-              store.project(project_id).then do |project|
-                unless project.nil?
-                  window.show_project(project)
-                end
-              end
-            end
-          end
 
           favorites_listbox.signal_connect("row-activated") do |_, row|
             @favorite_rows.key(row).then { |id| activate_favorite(id) }
           end
         end
+
+        add_controller(right_click)
+        right_click.signal_connect("pressed") { context_menu.popup }
       end
     end
 
-    def store = Store.instance
+    def add_controller(controller)
+      scrolled.add_controller(controller)
+    end
 
     def init
-      build_filters
       reload_favorites
-      reload_projects
+      reload_sources
       subscribe
-      filters_revealer.reveal_child = true
     end
 
     def subscribe
       %i[project_added project_updated project_deleted project_archived project_unarchived]
         .each { |event| store.on(event, owner: self) { reload_projects } }
+
+      %i[source_added source_updated source_deleted]
+        .each { |event| store.on(event, owner: self) { reload_sources } }
 
       %i[project_updated label_updated label_added label_deleted project_deleted]
         .each { |event| store.on(event, owner: self) { reload_favorites } }
@@ -82,106 +63,60 @@ module Planify
       %i[item_added item_updated item_deleted]
         .each { |event| store.on(event, owner: self) { refresh_counts } }
 
-      Settings.changed("filters-list-view") { build_filters }
+      Settings.changed("filters-list-view") { filters.rebuild }
+      Settings.changed("views-order-visible") { filters.rebuild }
       Settings.changed("show-tasks-count") { refresh_counts }
     end
 
-    # --- filters --------------------------------------------------------
-
-    def build_filters
-      @filter_rows = {}
-
-      filters_container.tap do |container|
-        container.child = filters_box
-
-        filters_box.tap do |box|
-          box.children.each { |child| box.remove(child) }
-
-          FILTERS.each do |filter|
-            filter_tile(filter).tap do |tile|
-              @filter_rows[filter[:key]] = tile
-              box.append(tile)
-            end
-          end
-        end
-      end
-
-      refresh_counts
-    end
-
-    def filter_tile(filter)
-      Gtk::Button.new.tap do |button|
-        button.add_css_class("flat")
-        button.add_css_class("filter-tile")
-        button.hexpand = true
-        button.child = filter_tile_content(filter)
-        button.signal_connect("clicked") { window.show_filter(filter[:key]) }
-      end
-    end
-
-    def filter_tile_content(filter)
-      Gtk::Box.new(:horizontal, 9).tap do |box|
-        box.append(filter_icon(filter))
-        box.append(Gtk::Label.new(filter[:title].call).tap { |label| label.xalign = 0 })
-        box.append(filter_count_label(filter))
-      end
-    end
-
-    def filter_icon(filter)
-      Gtk::Image.new(icon_name: filter[:icon]).tap do |image|
-        image.add_css_class("filter-icon")
-        image.pixel_size = 16
-      end
-    end
-
-    def filter_count_label(filter)
-      Gtk::Label.new("").tap do |label|
-        label.add_css_class("dim-label")
-        label.add_css_class("caption")
-        label.hexpand = true
-        label.xalign = 1
-        @counts ||= {}
-        @counts[filter[:key]] = label
-      end
-    end
-
-    FILTER_COUNTS = {
-      "inbox"     => ->(store) { store.inbox_project.then { |p| p.nil? ? [] : store.items_by_project(p.id).reject(&:checked?) } },
-      "today"     => ->(store) { store.today_items },
-      "scheduled" => ->(store) { store.scheduled_items },
-      "labels"    => ->(store) { store.labels },
-      "pinboard"  => ->(store) { store.pinboard_items },
-    }.freeze
-
     def refresh_counts
-      (@counts || {}).each do |key, label|
-        if Settings.get_boolean("show-tasks-count")
-          label.label = FILTER_COUNTS.fetch(key).call(store).size.to_s
-        else
-          label.label = ""
+      filters.refresh_counts
+      source_rows.each_value(&:reload)
+    end
+
+    # --- accounts ---------------------------------------------------------
+
+    # One group per account. A database written before sources existed has
+    # none, so one is created and the orphaned projects moved onto it.
+    def reload_sources
+      ensure_local_source
+
+      @source_rows = {}
+      clear(sources_box)
+
+      # The row object is kept, not the widget it builds: reload, select and
+      # project_rows all live on the object.
+      store.visible_sources.each do |source|
+        SidebarSourceRow.new(window, source).tap do |row|
+          @source_rows[source.id] = row
+          sources_box.append(row.build)
         end
       end
     end
 
-    # --- projects and favourites ----------------------------------------
+    def ensure_local_source
+      if store.local_source.nil?
+        store.insert_source(
+          Source.new(source_type: "local", display_name: _("On This Computer")),
+        ).tap { |source| adopt_orphans(source) }
+      end
+    end
+
+    def adopt_orphans(source)
+      store.projects.select { |project| project.source_id.to_s == "local" }.each do |project|
+        project.source_id = source.id
+        store.database.update(project)
+      end
+    end
 
     def reload_projects
-      @project_rows = {}
-      clear(projects_listbox)
-
-      store.root_projects.each { |project| append_project(project, 0) }
-      projects_label.label = _("On This Computer")
+      source_rows.each_value(&:reload)
     end
 
-    # Subprojects are indented under their parent rather than nested in an
-    # expander, which is how the sidebar reads upstream.
-    def append_project(project, depth)
-      ProjectRow.new(window, project, depth).build.tap do |row|
-        @project_rows[project.id] = row
-        projects_listbox.append(row)
-        store.subprojects_of(project.id).each { |child| append_project(child, depth + 1) }
-      end
+    def project_rows
+      source_rows.values.map(&:project_rows).reduce({}, :merge)
     end
+
+    # --- favourites -------------------------------------------------------
 
     def reload_favorites
       @favorite_rows = {}
@@ -212,8 +147,11 @@ module Planify
     end
 
     def favorite_icon(record)
-      Gtk::Image.new(icon_name: record.is_a?(Label) ? "tag-outline-symbolic" : "shoe-box-symbolic")
-                .tap { |image| image.pixel_size = 16 }
+      if record.is_a?(Label)
+        Gtk::Image.new(icon_name: "tag-outline-symbolic").tap { |image| image.pixel_size = 16 }
+      else
+        IconColorProject.new(record).build
+      end
     end
 
     def activate_favorite(id)
@@ -230,23 +168,40 @@ module Planify
       end
     end
 
-    # The selected view gets the highlight, wherever in the sidebar it lives.
+    # --- selection and the update popup -----------------------------------
+
     def select(key)
-      @filter_rows.each_value { |tile| tile.remove_css_class("selected") }
-      @filter_rows[key.delete_prefix("filter-")]&.add_css_class("selected")
+      filters.select(key)
 
       if key.start_with?("project-")
-        projects_listbox.select_row(@project_rows[key.delete_prefix("project-")])
+        key.delete_prefix("project-").then do |project_id|
+          source_rows.each_value { |row| row.select(project_id) }
+        end
       end
     end
 
-    def clear(listbox)
-      while listbox.first_child
-        listbox.remove(listbox.first_child)
+    def show_update(widget)
+      update_revealer.child = widget
+      update_revealer.reveal_child = true
+    end
+
+    def hide_update
+      update_revealer.reveal_child = false
+    end
+
+    def clear(container)
+      while container.first_child
+        container.remove(container.first_child)
       end
     end
 
-    # --- widgets --------------------------------------------------------
+    # --- widgets ----------------------------------------------------------
+
+    def overlay = @overlay ||= Gtk::Overlay.new
+
+    def filters
+      @filters ||= FilterFlowBox.new { |key| window.show_filter(key) }
+    end
 
     def scrolled
       @scrolled ||= Gtk::ScrolledWindow.new.tap do |scroll|
@@ -265,17 +220,6 @@ module Planify
         box.valign = :start
       end
     end
-
-    def filters_revealer
-      @filters_revealer ||= Gtk::Revealer.new.tap do |revealer|
-        revealer.transition_type = :crossfade
-        revealer.hexpand = true
-      end
-    end
-
-    def filters_container = @filters_container ||= Adwaita::Bin.new
-
-    def filters_box = @filters_box ||= Gtk::Box.new(:vertical, 0)
 
     def favorites_header
       @favorites_header ||= Gtk::Box.new(:horizontal, 6).tap do |box|
@@ -302,33 +246,38 @@ module Planify
       end
     end
 
-    def projects_header
-      @projects_header ||= Gtk::Box.new(:horizontal, 6).tap do |box|
-        box.margin_top = 12
-        box.margin_bottom = 3
+    def sources_box = @sources_box ||= Gtk::Box.new(:vertical, 0)
+
+    def update_revealer
+      @update_revealer ||= Gtk::Revealer.new.tap do |revealer|
+        revealer.transition_type = :slide_up
+        revealer.valign = :end
       end
     end
 
-    def projects_label
-      @projects_label ||= Gtk::Label.new(_("On This Computer")).tap do |label|
-        label.add_css_class("heading")
-        label.add_css_class("dim-label")
-        label.xalign = 0
-        label.hexpand = true
+    def right_click
+      @right_click ||= Gtk::GestureClick.new.tap { |gesture| gesture.button = Gdk::BUTTON_SECONDARY }
+    end
+
+    def context_menu
+      @context_menu ||= Gtk::PopoverMenu.new(:model, sidebar_menu).tap do |popover|
+        popover.set_parent(scrolled)
+        popover.has_arrow = false
       end
     end
 
-    def add_project_button
-      @add_project_button ||= Gtk::Button.new(icon_name: "plus-large-symbolic").tap do |button|
-        button.add_css_class("flat")
-        button.tooltip_text = _("Add Project")
-      end
-    end
+    def sidebar_menu
+      @sidebar_menu ||= Gio::Menu.new.tap do |menu|
+        Gio::Menu.new.tap do |section|
+          section.append(_("Add Project"), "win.new-project")
+          section.append(_("Manage Projects"), "win.manage-projects")
+          menu.append_section(nil, section)
+        end
 
-    def projects_listbox
-      @projects_listbox ||= Gtk::ListBox.new.tap do |listbox|
-        listbox.add_css_class("navigation-sidebar")
-        listbox.selection_mode = :single
+        Gio::Menu.new.tap do |section|
+          section.append(_("Preferences"), "app.preferences")
+          menu.append_section(nil, section)
+        end
       end
     end
   end

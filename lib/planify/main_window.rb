@@ -86,19 +86,62 @@ module Planify
     # --- startup --------------------------------------------------------
 
     def open_database
-      if store.database.healthy?
+      if !store.database.healthy?
+        views_stack.visible_child = database_error_page
+      else
         store.load
-        if store.empty?
-          Seed.install(store)
-        end
+        first_run
         sidebar.init
         go_homepage
-      else
-        views_stack.visible_child = database_error_page
+        start_services
       end
     end
 
     def store = Store.instance
+
+    # A Planner-era database is imported rather than left behind; only a
+    # genuinely empty install gets the tutorial.
+    def first_run
+      if store.empty?
+        if Services::MigrateFromPlanner.pending?
+          Services::MigrateFromPlanner.migrate
+          toast(_("Your tasks were imported from Planner."))
+        else
+          Seed.install(store)
+        end
+      end
+    end
+
+    def start_services
+      Services::Notification.init(app)
+      Services::TimeMonitor.init
+      Services::BackupManager.init_auto_backup
+      Services::Productivity.watch
+      Services::DBusServer.register(app, self)
+      check_for_updates
+      sync_on_startup
+    end
+
+    def check_for_updates
+      Services::Api.check do |release|
+        new_version_popup.release = release
+        sidebar.show_update(new_version_popup.build)
+      end
+    end
+
+    # Accounts set to sync do so once at startup, and then on their own timer.
+    def sync_on_startup
+      store.synced_sources.select(&:sync_server?).each do |source|
+        store.sync_source(source) { |_, _| nil }
+      end
+    end
+
+    def new_version_popup
+      @new_version_popup ||= NewVersionPopup.new do |version|
+        Services::Api.dismiss(version)
+        sidebar.hide_update
+      end
+    end
 
     HOME_VIEWS = {
       "inbox"     => -> { { key: "inbox" } },
@@ -124,11 +167,30 @@ module Planify
 
     # --- navigation -----------------------------------------------------
 
+    FILTER_VIEWS = {
+      "labels"    => ->(window) { Views::LabelsView.new(window) },
+      "today"     => ->(window) { Views::TodayView.new(window) },
+      "scheduled" => ->(window) { Views::ScheduledView.new(window) },
+    }.freeze
+
+    # Today and Scheduled have enough structure of their own — sections,
+    # overdue handling, calendar events — that they are their own views
+    # rather than another FilterView configuration.
     def show_filter(key)
+      FILTER_VIEWS.fetch(key, nil).then do |builder|
+        if builder.nil?
+          show_view("filter-#{key}") { Views::FilterView.new(self, key) }
+        else
+          show_view(view_key(key)) { builder.call(self) }
+        end
+      end
+    end
+
+    def view_key(key)
       if key == "labels"
-        show_view("labels") { Views::LabelsView.new(self) }
+        "labels"
       else
-        show_view("filter-#{key}") { Views::FilterView.new(self, key) }
+        "filter-#{key}"
       end
     end
 

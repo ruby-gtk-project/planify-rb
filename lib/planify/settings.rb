@@ -29,6 +29,13 @@ module Planify
 
     def changed(key, &block) = settings.signal_connect("changed::#{key}") { block.call }
 
+    # The schema does not carry a per-view key for every view — Today and
+    # Scheduled have a sort order but no direction, and a project has
+    # neither — so callers ask before reading. Reading a missing key aborts
+    # the process rather than raising, which is why this is a check and not a
+    # rescue.
+    def key?(key) = settings.settings_schema.has_key?(key)
+
     def clock_format_12h?
       if get_enum("clock-format").zero?
         Time.now.strftime("%p") != ""

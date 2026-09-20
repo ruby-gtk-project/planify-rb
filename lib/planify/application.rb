@@ -73,36 +73,32 @@ module Planify
       end
     end
 
-    ACCELS = {
-      "app.quit"           => ["<Control>q"],
-      "app.preferences"    => ["<Control>comma"],
-      "app.shortcuts"      => ["<Control>question", "F1"],
-      "win.quick-find"     => ["<Control>f"],
-      "win.new-item"       => ["<Control>n"],
-      "win.new-project"    => ["<Control><Shift>n"],
-      "win.sync"           => ["<Control>s"],
-      "win.go-inbox"       => ["<Control>1"],
-      "win.go-today"       => ["<Control>2"],
-      "win.go-scheduled"   => ["<Control>3"],
-      "win.go-labels"      => ["<Control>4"],
-      "win.go-pinboard"    => ["<Control>5"],
-      "win.toggle-sidebar" => ["F9"],
+    APP_ACTIONS = {
+      "quit"        => :quit,
+      "preferences" => :show_preferences,
+      "shortcuts"   => :show_shortcuts,
+      "about"       => :show_about,
     }.freeze
 
     def register_actions
-      {
-        "quit"        => -> { app.quit },
-        "preferences" => -> { Dialogs::Preferences.new.present(main_window.window) },
-        "shortcuts"   => -> { Dialogs::Shortcuts.new.present(main_window.window) },
-        "about"       => -> { show_about },
-      }.each do |name, handler|
+      APP_ACTIONS.each do |name, method|
         Gio::SimpleAction.new(name).tap do |action|
-          action.signal_connect("activate") { handler.call }
+          action.signal_connect("activate") { public_send(method) }
           app.add_action(action)
         end
       end
 
-      ACCELS.each { |action, accels| app.set_accels_for_action(action, accels) }
+      Services::ActionManager.install(app)
+    end
+
+    def quit = app.quit
+
+    def show_preferences
+      Dialogs::Preferences.new.present(main_window.window)
+    end
+
+    def show_shortcuts
+      Dialogs::Shortcuts.new.present(main_window.window)
     end
 
     def show_about
