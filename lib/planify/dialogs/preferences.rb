@@ -15,6 +15,7 @@ module Planify
       def pages
         @pages ||= [
           general.page,
+          sidebar.page,
           appearance.page,
           accounts.page,
           calendar.page,
@@ -24,6 +25,8 @@ module Planify
       end
 
       def general = @general ||= Pages::General.new(dialog)
+
+      def sidebar = @sidebar ||= Pages::SidebarPage.new
 
       def appearance = @appearance ||= Pages::Appearance.new
 

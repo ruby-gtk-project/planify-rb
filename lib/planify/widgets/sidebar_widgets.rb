@@ -147,7 +147,10 @@ module Planify
 
       title_label.label = source.header_text
       subtitle_label.label = source.subheader_text
-      subtitle_label.visible = !source.subheader_text.empty?
+      # A local account's subheader is its own name, so showing both would
+      # just say the same thing twice.
+      subtitle_label.visible = !source.subheader_text.empty? &&
+                               source.subheader_text != source.header_text
       icon.icon_name = source.icon_name
       box.visible = source.visible?
     end

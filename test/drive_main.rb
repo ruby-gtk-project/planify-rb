@@ -225,7 +225,7 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
   end
 
   d.step("preferences renders every page") do
-    d.check("six pages") { @prefs.pages.size == 6 }
+    d.check("seven pages") { @prefs.pages.size == 7 }
     d.check("home view combo populated") { @prefs.general.home_view_row.model.n_items == 5 }
     d.check("dark mode row reflects the setting") do
       @prefs.appearance.dark_row.active? == Settings.get_boolean("dark-mode")
@@ -243,13 +243,29 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
   end
 
   d.step("toggling a preference writes through to GSettings") do
-    @prefs.general.task_count_row.active = !Settings.get_boolean("show-tasks-count")
+    @prefs.sidebar.count_row.active = !Settings.get_boolean("show-tasks-count")
   end
 
   d.step("the setting moved") do
     d.check("show-tasks-count follows the switch") do
-      Settings.get_boolean("show-tasks-count") == @prefs.general.task_count_row.active?
+      Settings.get_boolean("show-tasks-count") == @prefs.sidebar.count_row.active?
     end
+  end
+
+  d.step("turning a filter on adds it to the sidebar") do
+    @before_filters = @prefs.sidebar.visible.dup
+    @prefs.sidebar.toggle(FilterFlowBox::FILTERS.find { |f| f[:key] == "pinboard" }, true)
+  end
+
+  d.step("the setting and the sidebar both grew") do
+    d.check("pinboard is now visible") { @prefs.sidebar.visible.include?("pinboard") }
+    d.check("one more than before") do
+      @prefs.sidebar.visible.size == @before_filters.size + 1
+    end
+    d.check("the sidebar renders it") do
+      window.call.sidebar.filters.visible_filters.any? { |f| f[:key] == "pinboard" }
+    end
+    d.shot("30-sidebar-filters")
     window.call.window.visible_dialog&.close
   end
 

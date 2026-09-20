@@ -105,8 +105,6 @@ module Planify
             p.add(quick_add_group)
 
             home_group.add(home_view_row)
-            home_group.add(task_count_row)
-            home_group.add(filters_list_row)
 
             task_group.add(new_task_row)
             task_group.add(default_priority_row)
