@@ -3,18 +3,29 @@
 Survey of `origin/main` (Vala/GTK4/libadwaita) against `lib/` on the `ruby`
 branch. Method: the `component-identification` skill — upstream extracted to a
 scratch tree, `component-scan.sh` run on both sides, then every user-facing
-file read or spot-read and joined to the port file that carries it.
+file read or spot-read and joined to the port file that carries it. Upstream
+splits nothing between a source file and a `.ui`, so each upstream row here is
+one file.
 
 ## Totals
 
 | | upstream | `ruby` branch |
 |---|---:|---:|
-| scan rows | 2927 | 708 |
-| widget instances | 2830 | 666 |
-| distinct widget types | 77 | 52 |
-| distinct CSS classes | 100 | 34 |
-| distinct signals | 201 | 33 |
-| source files (`.vala`) | 228 | 80 (`.rb`) |
+| scan rows | 2927 | 809 |
+| widget instances | 2830 | 724 |
+| distinct widget types | 77 | 55 |
+| distinct CSS classes (scan) | 100 | 47 |
+| distinct CSS classes (direct grep) | 141 | 47 |
+| distinct signals | 201 | 37 |
+| source files (`.vala`) | 228 | 85 (`.rb`) |
+
+Re-run on 2026-11-02, after `Port HeaderItem, ReorderChild, TextView and the
+rows built on them`. The upstream figures are unchanged from the first survey;
+the port's four columns are the nine classes that commit added. The scan's CSS
+stream under-counts both sides because it reads only the first string of a
+multi-element `css_classes = { "a", "b" }` initialiser, so the CSS section
+below is computed by direct grep instead and the scan's CSS row is kept only
+for continuity.
 
 Upstream has exactly **one** declarative UI file — `data/resources/ui/shortcuts.ui`
 (18 accelerators). Everything else is built in Vala, so the `.blp`/`.ui`
@@ -22,10 +33,11 @@ shortcut from Step 1 of the skill does not apply here; the widget trees had to
 be read out of source.
 
 User-facing upstream files (`src/{Dialogs,Layouts,Views,Widgets}`,
-`src/MainWindow.vala`, `src/App.vala`, `core/{Widgets,Layouts}`): **142**.
-Of those, **52** are named in a "ported from" comment in `lib/`, and reading
-the port shows **~63** have a real counterpart class (some merged, some
-renamed). **79 have none.**
+`src/MainWindow.vala`, `src/App.vala`, `core/{Widgets,Layouts}`,
+`core/QuickAddCore.vala`): **143**.
+Of those, **62** are now named in a "ported from" comment in `lib/`, and
+reading the port shows **~74** have a real counterpart class — some their own
+file, some merged into a sibling's, some renamed. **69 have none.**
 
 ## Non-code assets — all carried over verbatim, nothing to port
 
@@ -35,7 +47,7 @@ renamed). **79 have none.**
 | GResource manifest | `data/io.github.alainm23.planify.gresource.xml`, 291 files | same path | present |
 | Stylesheets | `data/resources/stylesheet/*.css`, 1105 lines | same path | present; `lib/planify/theme.rb` regenerates `variables.css` and the font-scale provider at runtime |
 | Shortcuts window | `data/resources/ui/shortcuts.ui` | `lib/planify/dialogs/shortcuts.rb` | **rebuilt in code**, driven by `Services::ActionManager::GROUPS` rather than the `.ui` |
-| `po/` catalogue | 84 LINGUAS, 167 `.po`, `POTFILES` with 218 entries | same, 167 `.po` | present; `POTFILES` still lists the 218 Vala paths and needs regenerating for `lib/**/*.rb` |
+| `po/` catalogue | 84 LINGUAS, 167 `.po`, `POTFILES` with 218 entries | same, 167 `.po` | present; `POTFILES` still lists 212 Vala paths and no `.rb` file, so it needs regenerating for `lib/**/*.rb` |
 | Icons, sounds, images, man pages, desktop files | `data/**` | same paths | present |
 
 ## Actions and accelerators
@@ -72,15 +84,15 @@ Order is the order a user meets them.
 |---|---|---|---|
 | `src/Layouts/Sidebar.vala` | `lib/planify/sidebar.rb` | sidebar | yes |
 | `src/Layouts/SidebarSourceRow.vala` | `lib/planify/widgets/sidebar_widgets.rb` | row | yes |
-| `src/Layouts/FilterPaneRow.vala` | `lib/planify/widgets/filter_pane_row.rb` | row | **no** — name appears only in a comment in `filter_flow_box.rb` |
-| `src/Layouts/FilterPaneChild.vala` | `lib/planify/widgets/filter_pane_row.rb` | child widget | **no** |
+| `src/Layouts/FilterPaneRow.vala` | `lib/planify/widgets/filter_flow_box.rb` | row | merged — `filter_flow_box.rb` builds the list-view row itself, as the `listbox` half of its stack; no separate file, and the row's `filter-pane-row`/`view-icon` classes are not applied |
+| `src/Layouts/FilterPaneChild.vala` | `lib/planify/widgets/filter_flow_box.rb` | child widget | merged — the grid tile, as the `flowbox` half; `filter-pane-child` not applied |
 | `src/Layouts/ProjectContainerRow.vala` | `lib/planify/widgets/project_container_row.rb` | row | **no** — the collapsible project group with its nested children |
 | `src/Layouts/ProjectRow.vala` | `lib/planify/widgets/project_row.rb` | row | yes |
-| `src/Layouts/LabelRow.vala` | `lib/planify/widgets/label_row.rb` | row | **no** |
+| `src/Layouts/LabelRow.vala` | `lib/planify/widgets/label_row.rb` | row | yes — the row the labels view renders, reorderable, with its own menu |
 | `src/Widgets/MagicButton.vala` | `lib/planify/widgets/sidebar_widgets.rb` | floating button | yes |
 | `src/Widgets/SyncButton.vala` | `lib/planify/widgets/sidebar_widgets.rb` | button | yes |
 | `src/Widgets/MultiSelectToolbar.vala` | `lib/planify/widgets/sidebar_widgets.rb` | toolbar | yes |
-| `core/Layouts/HeaderItem.vala` | `lib/planify/widgets/header_item.rb` | section container | **no** — the collapsible titled list container upstream reuses across every view (37 widget rows) |
+| `core/Layouts/HeaderItem.vala` | `lib/planify/widgets/header_item.rb` | section container | yes — the collapsible titled list container; wired as the sidebar's Favorites group |
 
 ### Views
 
@@ -117,12 +129,12 @@ Order is the order a user meets them.
 | `src/Widgets/CompletedTaskRow.vala` | `lib/planify/widgets/misc.rb` | row | yes |
 | `src/Widgets/ProjectItemRow.vala` | `lib/planify/widgets/project_item_row.rb` | row | **no** |
 | `src/Widgets/SectionItemRow.vala` | `lib/planify/widgets/section_item_row.rb` | row | **no** |
-| `src/Widgets/ReorderChild.vala` | `lib/planify/widgets/reorder_child.rb` | drag-and-drop wrapper | **no** — reordering wrapper used by every reorderable list |
+| `src/Widgets/ReorderChild.vala` | `lib/planify/widgets/reorder_child.rb` | drag-and-drop wrapper | yes — the drop strip travels as the record id on the row's widget name, since `Gdk::ContentProvider` carries only GObject values |
 | `src/Widgets/Attachments.vala` | `lib/planify/widgets/attachments.rb` | list | yes |
 | `src/Widgets/AttachmentRow.vala` | `lib/planify/widgets/attachments.rb` | row | yes |
 | `src/Widgets/LabelsSummary.vala` | `lib/planify/widgets/small.rb` | summary | yes |
 | `core/Widgets/ItemLabels.vala` | `lib/planify/widgets/small.rb` | label strip | yes |
-| `core/Widgets/ItemLabelChild.vala` | `lib/planify/widgets/small.rb` | chip | **no** — only referenced in a comment |
+| `core/Widgets/ItemLabelChild.vala` | `lib/planify/widgets/small.rb` | chip | merged — `ItemLabels` draws the chips inline under its own `label-chip` class; upstream's `item-label-child` is not applied |
 | `src/Widgets/ItemChangeHistoryRow.vala` | `lib/planify/widgets/misc.rb` | row | yes |
 
 ### Pickers and inline controls (`core/Widgets` — 605 widget rows, the densest area)
@@ -164,15 +176,15 @@ Order is the order a user meets them.
 | `core/Widgets/IconColorProject.vala` | `lib/planify/widgets/small.rb` | icon | yes |
 | `core/Widgets/ColorPickerRow.vala` | `lib/planify/widgets/color_picker.rb` | row | yes |
 | `src/Widgets/ColorPickerRow.vala` | `lib/planify/widgets/color_picker.rb` | row | **no** — a second, `src`-side variant distinct from the `core` one |
-| `core/Widgets/TextView.vala` | `lib/planify/widgets/text_view.rb` | text view | **no** — placeholder-capable `Gtk.TextView` subclass |
-| `src/Widgets/EditableTextView.vala` | `lib/planify/widgets/editable_text_view.rb` | inline editor | **no** — click-to-edit title/description |
+| `core/Widgets/TextView.vala` | `lib/planify/widgets/text_view.rb` | text view | yes — placeholder written into the buffer at half opacity when unfocused and empty |
+| `src/Widgets/EditableTextView.vala` | `lib/planify/widgets/editable_text_view.rb` | inline editor | yes — the project note, editable in place; abbreviates itself behind Show more in mobile mode |
 | `core/Widgets/MarkdownEditor.vala` | `lib/planify/widgets/markdown_editor.rb` | editor | yes |
-| `src/Widgets/ComboWrapRow.vala` | `lib/planify/widgets/combo_wrap_row.rb` | row | **no** |
+| `src/Widgets/ComboWrapRow.vala` | `lib/planify/widgets/combo_wrap_row.rb` | row | yes — the per-project Markdown override in the project dialog |
 | `src/Widgets/ScrolledWindow.vala` | `lib/planify/widgets/small.rb` | scroller | yes |
 | `src/Widgets/FilterFlowBox.vala` | `lib/planify/widgets/filter_flow_box.rb` | flow box | yes |
 | `src/Widgets/FilterFlowBoxChild.vala` | `lib/planify/widgets/filter_flow_box.rb` | child | **no** |
 | `src/Widgets/PinnedItemsBox.vala` | `lib/planify/widgets/filter_flow_box.rb` | box | yes |
-| `src/Widgets/SectionsOrderPopover.vala` | `lib/planify/widgets/sections_order_popover.rb` | popover | **no** |
+| `src/Widgets/SectionsOrderPopover.vala` | `lib/planify/widgets/sections_order_popover.rb` | popover | yes — with `SectionsOrderItem`; behind the project's section button |
 | `core/Widgets/ContextMenu/MenuItem.vala` | `lib/planify/widgets/context_menu.rb` | menu row | yes |
 | `core/Widgets/ContextMenu/MenuSwitch.vala` | `lib/planify/widgets/context_menu.rb` | menu row | yes |
 | `core/Widgets/ContextMenu/MenuPicker.vala` | `lib/planify/widgets/context_menu.rb` | menu row | yes |
@@ -244,7 +256,26 @@ Order is the order a user meets them.
 | `src/Dialogs/Preferences/Pages/Accounts/SourceView.vala` | `lib/planify/dialogs/accounts_page.rb` | page | **no** — per-source settings and removal |
 | `src/Widgets/IgnoreSSLSwitchRow.vala` | `lib/planify/dialogs/accounts_page.rb` | row | **no** |
 | `src/Widgets/BypassResolveSwitchRow.vala` | `lib/planify/dialogs/accounts_page.rb` | row | **no** |
-| `src/Widgets/TranslationRow.vala` | `lib/planify/widgets/translation_row.rb` | row | **no** — the translation-credit row behind `data/translations_metrics.json` |
+| `src/Widgets/TranslationRow.vala` | `lib/planify/widgets/translation_row.rb` | row | yes — on the About page, reading completeness from the shipped `.po` catalogues |
+
+### Companion binaries
+
+Upstream ships three programs beside the window, each with its own `main`.
+They are user-facing surfaces, so they belong in the inventory even where they
+build no widgets.
+
+| Upstream | → port | Kind | Present |
+|---|---|---|---|
+| `quick-add/App.vala` | `lib/planify/quick_add_application.rb` | application | yes — same shape: a resizeless window whose whole content is `QuickAddCore` |
+| `quick-add/MainWindow.vala` | `lib/planify/quick_add_application.rb` | window | partial — the port presents `QuickAdd` as a dialog over a 1×1 hidden window rather than `set_content`ing the widget, and has no `can_close`/`parent_can_close` gate, so Escape can close the window mid-save |
+| `quick-add/Services/DBusClient.vala` | `lib/planify/services/dbus_server.rb` | bus client | yes |
+| `cli/Main.vala`, `ArgumentParser`, `TaskCreator`, `TaskValidator`, `OutputFormatter`, `DBusClient` (6 files) | `lib/planify/cli.rb` | CLI | yes — one module covers all six; `add`, `list`, `projects`, `update`, `backup`, `help` |
+| `search-provider/search-provider.vala` | `lib/planify/services/dbus_server.rb` | GNOME Shell search provider | yes — `org.gnome.Shell.SearchProvider2` on `/io/github/alainm23/planify/SearchProvider` |
+| `search-provider/search-repository.vala` | `lib/planify/services/dbus_server.rb` | search backend | yes |
+| `search-provider/main.vala` | `exe/planify` | entry point | yes — the port serves the interface from the app process instead of a separate service binary |
+
+Entry points on the port side: `exe/planify`, `exe/planify-cli`,
+`exe/planify-quick-add`, `exe/planify-dev`.
 
 ### Calendar events
 
@@ -253,37 +284,154 @@ Order is the order a user meets them.
 | `src/Widgets/EventsList.vala` | `lib/planify/widgets/misc.rb` | list | yes |
 | `src/Widgets/EventRow.vala` | `lib/planify/widgets/misc.rb` | row | yes |
 
-## CSS classes upstream applies that the port never does (40)
+## Widget types upstream uses that the port never instantiates (15)
 
-`accent`, `activatable`, `bg-transparent`, `border-radius-6`,
-`checkbutton-label`, `color-primary`, `completed-color`,
-`completed-image-color`, `destructive-action`, `dimmed`, `dimming-bg`,
-`font-bold`, `h4`, `hidden-button`, `item-label-child`,
-`listbox-background`, `listbox-separator-3`, `menu-button-no-padding`,
-`no-font-bold`, `no-padding`, `opened`, `pinboard-color`,
-`popover-contents`, `primary-color`, `priority-1-button`,
-`priority-1-color`, `priority-2-button`, `priority-2-color`,
-`priority-3-button`, `priority-3-color`, `priority-4-color`,
-`priority-pulse-animation`, `row`, `separator-lines`,
-`suggested-button-selected`, `switch-min`, `today`, `transition`, `view`.
+`Adw.Avatar`, `Adw.BottomSheet`, `Adw.ButtonRow`, `Adw.NavigationPage`,
+`Adw.NavigationView`, `Adw.Spinner`, `Adw.ToggleGroup`, `Adw.ViewStack`,
+`Gtk.FlowBoxChild`, `Gtk.Frame`, `Gtk.ListView`, `Gtk.ProgressBar`,
+`Gtk.Scale`, `Gtk.Text`, `Gtk.WindowHandle` — plus `GtkSource.Buffer`, which
+only the Markdown editor needs and which the port replaces with a plain
+`Gtk::TextBuffer`.
 
-All 40 are defined in the stylesheets the port already ships, so these are
-missing *applications*, not missing CSS. The `priority-*` set and
-`item-label-child` land on the unported buttons and chips above;
-`destructive-action` and `suggested-button-selected` are plain omissions on
-buttons that do exist.
+Four of these are structural rather than cosmetic and name real gaps above:
+`Adw.NavigationView`/`NavigationPage` are how upstream's accounts and source
+pages push and pop, `Adw.ViewStack` is upstream's view switcher, and
+`Gtk.ListView` is the `SignalListItemFactory` quick-find is built on.
+`Gtk.Scale` is the font-scale slider; `Adw.Spinner` and `Gtk.ProgressBar` are
+the sync and backup progress states; `Adw.BottomSheet` is the mobile task
+detail.
+
+The port's `Adw.ShortcutsDialog` in place of upstream's `Gtk.ShortcutsWindow`
+family is a deliberate modernisation, not a gap.
+
+## CSS classes upstream applies that the port never does (110)
+
+Counted by grepping every `add_css_class` / `css_classes` site on both sides
+rather than from the scan, whose CSS stream reads only the first string of a
+multi-element initialiser and so under-reports upstream badly. Upstream
+applies **141** distinct classes; the port applies **47**, of which 31 are
+upstream's.
+
+`accent`, `activatable`, `add-button`, `animation`, `badge`, `bg-danger`,
+`body`, `border-outline`, `border-radius-6`, `border-radius-9`, `br-12`,
+`button-emoji-picker`, `calendar-day`, `checkbutton-label`, `circle-color`,
+`circular-check`, `color-radio`, `complete`, `completed-color`, `completed-
+grid`, `completed-image-color`, `date-flying-label`, `date-updated`,
+`description-box`, `destructive-action`, `devel`, `dimmed`, `dimming-bg`,
+`drop-target-list`, `error-message`, `event-bar`, `fancy-bounce-turn-
+animation`, `fancy-turn-animation`, `filter-pane-child`, `filter-pane-row`,
+`font-bold`, `font-weight-500`, `fw-600`, `header-item-button`, `heatmap-
+cell-%d`, `heatmap-cell-today`, `hidden-button`, `icon-color`, `indicator`,
+`is_loading`, `item-label-child`, `keep-adding-button`, `label-color`,
+`line-through`, `listbox-background`, `listbox-separator-6`, `menu-button-
+no-padding`, `menu-item-danger`, `min-height-0`, `monospace`, `no-font-
+bold`, `opened`, `overdue-grid`, `padding-4`, `pane-due-button`, `pb-6`,
+`pinboard-color`, `popover-contents`, `primary-color`, `priority-1-button`,
+`priority-1-color`, `priority-1-icon`, `priority-2-button`,
+`priority-2-color`, `priority-2-icon`, `priority-3-button`,
+`priority-3-color`, `priority-3-icon`, `priority-4-color`, `priority-color`,
+`priority-flying-label`, `priority-label-impact`, `priority-pulse-
+animation`, `property`, `quick-find-list`, `see-more-icon-collapsed`, `see-
+more-icon-expanded`, `selectable-item`, `shortcut-widget`, `sidebar`,
+`sidebar-card`, `sidebar-row`, `small-button`, `source-calendar-color`,
+`submit-spinner`, `suggested-button-selected`, `suggestion-chip`, `switch-
+min`, `task-editing`, `task-item`, `text-color`, `theme-dark`, `theme-dark-
+blue`, `theme-mode-image`, `title-2`, `title-4`, `today`, `today-grid`,
+`transparent`, `upcoming-grid`, `version-popup`, `view`, `view-button`,
+`view-icon`, `warning`
+
+All of them are defined in the stylesheets the port already ships
+(`data/resources/stylesheet/*.css`, carried over verbatim), so every one is a
+missing *application*, not missing CSS. They cluster:
+
+- **Priority** — `priority-{1..4}-color`, `priority-{1..3}-button`,
+  `priority-{1..3}-icon`, `priority-color`, `priority-label-impact`,
+  `priority-flying-label`, `priority-pulse-animation`. These land on
+  `PriorityButton` and the flying labels, none of which is ported.
+- **Theme previews** — `theme-dark`, `theme-dark-blue`, `theme-mode-image`
+  are what Appearance's theme swatches paint themselves with.
+- **Sidebar** — `sidebar`, `sidebar-card`, `sidebar-row`, `view-icon`,
+  `view-button`, `filter-pane-row`, `filter-pane-child`. The port reaches the
+  same widgets but leaves them in default Adwaita dress.
+- **Scheduled and Today grids** — `today-grid`, `upcoming-grid`,
+  `overdue-grid`, `completed-grid`.
+- **Animation** — `animation`, `fancy-turn-animation`,
+  `fancy-bounce-turn-animation`, `see-more-icon-{collapsed,expanded}`,
+  `submit-spinner`.
+- **Typography and spacing utilities** — `title-2`, `title-4`, `body`,
+  `font-bold`, `no-font-bold`, `fw-600`, `font-weight-500`, `monospace`,
+  `br-12`, `border-radius-6`, `border-radius-9`, `padding-4`, `pb-6`,
+  `min-height-0`, `line-through`, `transparent`, `listbox-separator-6`.
+- **Plain omissions on buttons and rows that do exist** —
+  `destructive-action`, `suggested-button-selected`, `activatable`, `accent`,
+  `warning`, `dimmed`, `hidden-button`, `switch-min`, `view`, `today`,
+  `circular-check`, `selectable-item`, `menu-item-danger`.
+
+The 16 classes the port applies that upstream does not —
+
+`background`, `complete-animation`, `destructive`, `dragging`, `filter-
+tile`, `item-board`, `item-row`, `label-chip`, `markdown-editor`, `menu-
+listbox`, `navigation-sidebar`, `osd`, `project-row`, `section-board`,
+`stat-card`, `toolbar`
+
+— are the port's own names for widgets it builds in one file where upstream
+used several, plus the Adwaita built-ins `background`, `destructive`,
+`navigation-sidebar`, `osd` and `toolbar`. The port-specific ones appear in no
+shipped stylesheet, so they style nothing today; each is either a rule to add
+or a name to replace with upstream's.
 
 ## Where the work is
 
+In rough order of how much each unblocks, after the nine classes the
+`HeaderItem`/`ReorderChild`/`TextView` commit landed:
+
 1. **`core/Widgets` pickers** — 605 widget rows upstream, roughly 100 in the
    port. Every picker exists as its popover but not as its button, row or
-   core list, which is why the port has pickers you cannot open from a row.
-2. **The custom calendar** — 7 files, nothing ported.
-3. **Shared structural widgets** — `HeaderItem`, `HeaderBar`, `ItemBase`,
-   `ReorderChild`, `TextView`, `EditableTextView`. Five of these are reused
-   across the whole app, so each one unblocks several views at once.
-4. **Accounts setup** — Nextcloud, InboxPage, SourceView and the two SSL/
-   resolve switch rows.
-5. **Preferences sub-pages** — three pages collapsed into General.
-6. **Accelerator behaviour** — typing-accelerator suspend/resume and
-   `<Control>1..9` project switching.
+   core list, which is why the port has pickers no row can open:
+   `LabelButton`, `LabelQuickPicker`, `LabelsPickerCore`, `LabelPicker/LabelRow`,
+   `ProjectPickerCore`, `ProjectPickerRow`, `ProjectPickerButton`,
+   `ProjectPickerPopover`, `SectionPickerRow`, `SectionButton`,
+   `ReminderRow`, `ReminderButton`, `ScheduleButton`, `TimePicker`,
+   `PriorityButton`, `PinButton`, `DeadlineButton`, `StatusButton`. 18 files.
+2. **The custom calendar** — `core/Widgets/Calendar/` is 7 files and
+   `calendar.css`, none of it ported; the port substitutes `Gtk::Calendar`,
+   so the month scroller, the day cells and their dots are all absent.
+3. **Shared structural widgets still missing** — `src/Layouts/HeaderBar.vala`
+   (every view and dialog builds its own `Adwaita::HeaderBar` inline, so the
+   title modes, sync button and view-style switcher exist nowhere) and
+   `src/Layouts/ItemBase.vala` (the base `ItemRow` and `ItemBoard` share
+   upstream; the port duplicates it in both). Both are reused app-wide.
+4. **Row variants on top of rows that exist** —
+   `src/Layouts/ProjectContainerRow.vala` (the collapsible project group with
+   nested children), `src/Widgets/ProjectItemRow.vala`,
+   `src/Widgets/SectionItemRow.vala`, `src/Widgets/ItemDetailCompleted.vala`,
+   `src/Views/Label/Label.vala` with `LabelSourceRow.vala` (the single-label
+   task list; `labels_view.rb` only lists labels), and the `src`-side
+   `ColorPickerRow.vala` variant.
+5. **Quick Find's real machinery** — `QuickFindItem`, `QuickFindFactory`,
+   `QuickFindSectionSorter` and `Synapse`. The port's dialog is a `ListBox` of
+   plain `ActionRow`s, so there is no sectioned, sorted, scored result list.
+6. **Accounts setup** — `NextcloudSetup`, `InboxPage`, `SourceView` and the
+   `IgnoreSSLSwitchRow` / `BypassResolveSwitchRow` pair. Without `SourceView`
+   a configured account cannot be inspected or removed.
+7. **Preferences sub-pages** — `BasePage`, `HomeView`, `TaskSetting`,
+   `QuickAdd`. Three pages are collapsed into groups on General, which is a
+   defensible merge, but `BasePage`'s shared chrome is what the rest of the
+   pages lean on upstream.
+8. **Productivity report sections** — `SummarySection` and
+   `ProductivitySection`; the port inlines three `StatCard`s in their place.
+9. **The 12 concrete filters** — `core/Objects/Filters/{Inbox,Today,Tomorrow,
+   Anytime,Scheduled,Repeating,Completed,Labels,Unlabeled,Pinboard,Priority,
+   AllItems}.vala`. `FilterItem` is attributed; the concrete filters, each with
+   its own name, icon, colour and query, live as a literal table in
+   `filter_flow_box.rb` and `filter_view.rb` rather than as objects.
+10. **CSS applications** — 110 classes, all already defined in the shipped
+    stylesheets. Cheap per class and the single biggest visual difference.
+11. **Accelerator behaviour** — the typing-accelerator suspend/resume pair
+    (`disable_all_accels` / `enable_all_accels`) and the parameterised
+    `win.action_view_project(N)`, so `<Control>1`..`<Control>9` are unbound.
+12. **Quick Add's close gate** — `can_close` / `parent_can_close`, so Escape
+    cannot close the standalone window while a task is being written.
+13. **`po/POTFILES`** — still lists 212 Vala paths and no `.rb` file, so none
+    of the port's own strings are extractable even though all 167 `.po`
+    catalogues and 84 LINGUAS are carried over.
