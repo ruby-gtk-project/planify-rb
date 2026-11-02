@@ -18,7 +18,7 @@ module Planify
           add_button.tooltip_text = _("Add Label")
 
           list_box.signal_connect("row-activated") do |_, row|
-            labels[row.index].then do |label|
+            store.label(row.name.to_s).then do |label|
               unless label.nil?
                 window.show_label(label)
               end
@@ -49,9 +49,9 @@ module Planify
         end
 
         labels.each do |label|
-          label_row(label).tap do |row|
+          LabelRow.new(window, label).tap do |row|
             @rows[label.id] = row
-            list_box.append(row)
+            list_box.append(row.build)
           end
         end
 
@@ -59,64 +59,6 @@ module Planify
           stack.visible_child_name = "empty"
         else
           stack.visible_child_name = "list"
-        end
-      end
-
-      def label_row(label)
-        Adwaita::ActionRow.new.tap do |row|
-          row.title = label.name.to_s
-          row.subtitle = n_("%d task", "%d tasks", store.items_by_label(label.id).size) %
-                         store.items_by_label(label.id).size
-          row.activatable = true
-          row.add_prefix(label_icon(label))
-          row.add_suffix(edit_button(label))
-          row.add_suffix(delete_button(label))
-        end
-      end
-
-      def label_icon(label)
-        Gtk::Image.new(icon_name: "tag-outline-symbolic").tap do |image|
-          Gtk::CssProvider.new.tap do |provider|
-            provider.load(data: "image { color: #{Palette.hex(label.color)}; }")
-            image.style_context.add_provider(provider, Gtk::StyleProvider::PRIORITY_APPLICATION)
-          end
-        end
-      end
-
-      def edit_button(label)
-        Gtk::Button.new(icon_name: "edit-symbolic").tap do |button|
-          button.add_css_class("flat")
-          button.valign = :center
-          button.tooltip_text = _("Edit Label")
-          button.signal_connect("clicked") do
-            Dialogs::LabelDialog.new(window, label: label).present(window.window)
-          end
-        end
-      end
-
-      def delete_button(label)
-        Gtk::Button.new(icon_name: "user-trash-symbolic").tap do |button|
-          button.add_css_class("flat")
-          button.valign = :center
-          button.tooltip_text = _("Delete Label")
-          button.signal_connect("clicked") { confirm_delete(label) }
-        end
-      end
-
-      def confirm_delete(label)
-        Adwaita::AlertDialog.new(
-          _("Delete Label?"),
-          _("“%s” will be removed from every task that carries it.") % label.name,
-        ).tap do |dialog|
-          dialog.add_response("cancel", _("Cancel"))
-          dialog.add_response("delete", _("Delete"))
-          dialog.set_response_appearance("delete", Adwaita::ResponseAppearance::DESTRUCTIVE)
-          dialog.signal_connect("response") do |_, response|
-            if response == "delete"
-              store.delete_label(label)
-            end
-          end
-          dialog.present(window.window)
         end
       end
 

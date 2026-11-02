@@ -147,6 +147,17 @@ module Planify
 
     def emoji? = icon_style == "emoji"
 
+    # A project may override the global Markdown preference, which is what
+    # upstream's markdown_setting column carries; an empty value, the default,
+    # means "whatever the global setting says".
+    def markdown_enabled?
+      case markdown_setting.to_s
+      when "enabled" then true
+      when "disabled" then false
+      else Settings.get_boolean("enable-markdown-formatting")
+      end
+    end
+
     def subproject? = !parent_id.to_s.empty?
 
     def items = Store.instance.items_by_project(id)

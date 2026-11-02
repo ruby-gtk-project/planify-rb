@@ -425,6 +425,10 @@ module Planify
       @narrow_breakpoint ||=
         Adwaita::Breakpoint.new(Adwaita::BreakpointCondition.parse("max-width: 675sp")).tap do |bp|
           bp.add_setter(split_view, "collapsed", true)
+          # Upstream's EventBus.mobile_mode: widgets that abbreviate themselves
+          # in a narrow window read it instead of measuring themselves.
+          bp.signal_connect("apply") { Services::EventBus.mobile_mode = true }
+          bp.signal_connect("unapply") { Services::EventBus.mobile_mode = false }
         end
     end
 

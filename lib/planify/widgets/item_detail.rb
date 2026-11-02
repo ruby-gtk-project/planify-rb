@@ -215,6 +215,12 @@ module Planify
       reminders_button.label = reminders_summary
     end
 
+    # The shown task's project decides whether its note is styled as Markdown,
+    # and a task with no project at all falls back to the global preference.
+    def project_markdown
+      item&.project.then { |project| project&.markdown_enabled? }
+    end
+
     def project_summary
       [item.project&.name, item.section&.name].compact.reject(&:empty?).join(" / ")
         .then { |text| text.empty? ? _("Inbox") : text }
@@ -485,7 +491,9 @@ module Planify
     end
 
     def markdown_editor
-      @markdown_editor ||= MarkdownEditor.new { |text| save_description(text) }
+      @markdown_editor ||= MarkdownEditor.new(markdown_enabled: -> { project_markdown }) do |text|
+        save_description(text)
+      end
     end
 
     def properties_group

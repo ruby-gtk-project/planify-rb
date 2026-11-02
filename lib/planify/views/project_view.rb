@@ -61,7 +61,7 @@ module Planify
           header.pack_end(sort_button)
 
           view_style_button.signal_connect("clicked") { toggle_view_style }
-          add_section_button.signal_connect("clicked") { add_section }
+          add_section_button.popover = sections_order_popover.build
           sort_button.menu_model = sort_menu_model
           register_sort_actions(toolbar)
 
@@ -73,7 +73,7 @@ module Planify
           clamp.child = column_box
 
           column_box.tap do |box|
-            box.append(description_label)
+            box.append(description_widget.build)
             box.append(pinned_box.build)
             box.append(list_box)
             box.append(sections_box)
@@ -91,8 +91,9 @@ module Planify
       def refresh
         window_title.title = title
         window_title.subtitle = subtitle
-        description_label.label = project.description.to_s
-        description_label.visible = !project.description.to_s.strip.empty?
+        unless description_widget.editing?
+          description_widget.text = project.description.to_s
+        end
         refresh_style_button
         pinned_box.refresh
         rebuild
@@ -179,6 +180,13 @@ module Planify
         Dialogs::SectionDialog.new(window, project).present(window.window)
       end
 
+      def save_description(text)
+        unless project.description.to_s == text
+          project.description = text
+          store.update_project(project)
+        end
+      end
+
       def view_menu
         @view_menu ||= Gio::Menu.new.tap do |menu|
           Gio::Menu.new.tap do |section|
@@ -201,11 +209,18 @@ module Planify
         end
       end
 
+      # The button opens the sections popover, where the sections can be
+      # reordered and hidden as well as added — upstream's section menu.
       def add_section_button
-        @add_section_button ||= Gtk::Button.new(icon_name: "plus-large-symbolic").tap do |button|
+        @add_section_button ||= Gtk::MenuButton.new.tap do |button|
+          button.icon_name = "plus-large-symbolic"
           button.add_css_class("flat")
-          button.tooltip_text = _("Add Section")
+          button.tooltip_text = _("Sections")
         end
+      end
+
+      def sections_order_popover
+        @sections_order_popover ||= SectionsOrderPopover.new(window, project)
       end
 
       def column_box = @column_box ||= Gtk::Box.new(:vertical, 0)
@@ -237,13 +252,14 @@ module Planify
         end
       end
 
-      def description_label
-        @description_label ||= Gtk::Label.new("").tap do |label|
-          label.xalign = 0
-          label.wrap = true
-          label.add_css_class("dim-label")
-          label.margin_bottom = 12
-          label.visible = false
+      # The project note, editable in place: clicking into it starts an edit
+      # and every keystroke is written back, which is what upstream's
+      # EditableTextView does on the list and board layouts alike.
+      def description_widget
+        @description_widget ||= EditableTextView.new(_("Note")) do |text|
+          save_description(text)
+        end.tap do |widget|
+          widget.build.margin_bottom = 12
         end
       end
 

@@ -10,6 +10,10 @@ module Planify
 
     def self.resources = @resources ||= File.join(data, "resources")
 
+    # The translation catalogues ship beside lib/ and data/, and are read at
+    # runtime to work out how complete the user's own language is.
+    def self.po = @po ||= File.join(root, "po")
+
     def self.user_data
       @user_data ||= File.join(
         ENV.fetch("XDG_DATA_HOME", File.join(Dir.home, ".local", "share")),

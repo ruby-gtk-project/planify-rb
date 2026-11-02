@@ -44,13 +44,21 @@ module Planify
             p.add(links_group)
             p.add(diagnostics_group)
 
+            links_group.add(translation_row.build)
             LINKS.each { |link| links_group.add(link_row(link)) }
+
+            # The percentage fills in when the page is first shown rather than
+            # while the dialog is still being assembled, so the animation is
+            # seen rather than already over.
+            p.signal_connect("map") { translation_row.trigger_animation }
 
             diagnostics_group.add(version_row)
             diagnostics_group.add(database_row)
             diagnostics_group.add(log_row)
           end
         end
+
+        def translation_row = @translation_row ||= TranslationRow.new
 
         def links_group
           @links_group ||= Adwaita::PreferencesGroup.new.tap do |g|

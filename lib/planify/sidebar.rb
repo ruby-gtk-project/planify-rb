@@ -24,13 +24,10 @@ module Planify
 
         content_box.tap do |box|
           box.append(filters.build)
-          box.append(favorites_header)
-          box.append(favorites_listbox)
+          box.append(favorites_group.build)
           box.append(sources_box)
 
-          favorites_header.append(favorites_label)
-
-          favorites_listbox.signal_connect("row-activated") do |_, row|
+          favorites_group.on_row_activated do |row|
             @favorite_rows.key(row).then { |id| activate_favorite(id) }
           end
         end
@@ -120,17 +117,16 @@ module Planify
 
     def reload_favorites
       @favorite_rows = {}
-      clear(favorites_listbox)
+      favorites_group.clear
 
       store.favorites.each do |record|
         favorite_row(record).tap do |row|
           @favorite_rows[record.id] = row
-          favorites_listbox.append(row)
+          favorites_group.add_child(row)
         end
       end
 
-      favorites_header.visible = !store.favorites.empty?
-      favorites_listbox.visible = !store.favorites.empty?
+      favorites_group.check_visibility(store.favorites.size)
     end
 
     def favorite_row(record)
@@ -221,28 +217,15 @@ module Planify
       end
     end
 
-    def favorites_header
-      @favorites_header ||= Gtk::Box.new(:horizontal, 6).tap do |box|
-        box.margin_top = 12
-        box.margin_bottom = 3
-        box.visible = false
-      end
-    end
-
-    def favorites_label
-      @favorites_label ||= Gtk::Label.new(_("Favorites")).tap do |label|
-        label.add_css_class("heading")
-        label.add_css_class("dim-label")
-        label.xalign = 0
-        label.hexpand = true
-      end
-    end
-
-    def favorites_listbox
-      @favorites_listbox ||= Gtk::ListBox.new.tap do |listbox|
-        listbox.add_css_class("navigation-sidebar")
-        listbox.selection_mode = :none
-        listbox.visible = false
+    # The Favorites group, which folds itself away when nothing is starred.
+    def favorites_group
+      @favorites_group ||= HeaderItem.new(
+        _("Favorites"),
+        placeholder_message: _("Starred projects and labels show up here."),
+      ).tap do |group|
+        group.items.add_css_class("navigation-sidebar")
+        group.items.selection_mode = :none
+        group.listbox_margin_top = 3
       end
     end
 

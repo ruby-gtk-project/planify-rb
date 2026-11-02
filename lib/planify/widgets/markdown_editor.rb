@@ -6,12 +6,26 @@ module Planify
   # delimiters stay visible, dimmed, which is what makes the editor usable
   # without a preview pane.
   class MarkdownEditor
-    def initialize(&on_change)
+    # `markdown_enabled` is asked each time the text is restyled rather than
+    # read once, because the editor outlives the task it is showing and the
+    # next task may belong to a project that overrides the global preference.
+    def initialize(markdown_enabled: nil, &on_change)
       @on_change = on_change
+      @markdown_enabled = markdown_enabled
       @applying = false
     end
 
     attr_reader :on_change
+
+    def markdown_enabled?
+      @markdown_enabled&.call.then do |override|
+        if override.nil?
+          Settings.get_boolean("enable-markdown-formatting")
+        else
+          override
+        end
+      end
+    end
 
     def build
       @build ||= box.tap do |b|
@@ -94,7 +108,7 @@ module Planify
     end
 
     def restyle
-      if Settings.get_boolean("enable-markdown-formatting")
+      if markdown_enabled?
         clear_tags
         buffer.text.then { |text| style_blocks(text); style_inline(text) }
       end

@@ -22,6 +22,17 @@ module Planify
         subscribers[event].dup.each { |(_, block)| block.call(*args) }
       end
 
+      # Whether the window is currently below the narrow breakpoint. The
+      # window sets it from the breakpoint's apply and unapply signals; widgets
+      # that lay themselves out differently when space is tight read it rather
+      # than measuring themselves.
+      def mobile_mode? = @mobile_mode == true
+
+      def mobile_mode=(value)
+        @mobile_mode = value == true
+        emit(:mobile_mode_changed, mobile_mode?)
+      end
+
       # The multi-select mode the toolbar drives. Kept here rather than on a
       # view because the sidebar, the toolbar and every row need to agree.
       def multi_select? = @multi_select == true

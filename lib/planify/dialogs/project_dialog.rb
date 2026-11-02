@@ -46,6 +46,9 @@ module Planify
               p.add(identity_group)
               p.add(appearance_group)
               p.add(placement_group)
+              p.add(settings_group)
+
+              settings_group.add(markdown_row.build)
 
               identity_group.tap do |group|
                 group.add(name_row)
@@ -82,7 +85,24 @@ module Planify
         end
       end
 
+      # The stored values of markdown_setting, in the order the row shows them.
+      MARKDOWN_SETTINGS = ["", "enabled", "disabled"].freeze
+
       def parents = [nil] + store.active_projects.reject { |candidate| candidate == project }
+
+      def settings_group
+        @settings_group ||= Adwaita::PreferencesGroup.new.tap do |group|
+          group.title = _("Settings")
+        end
+      end
+
+      def markdown_row
+        @markdown_row ||= ComboWrapRow.new(
+          _("Markdown Formatting"),
+          subtitle: _("Override the global markdown setting for this project"),
+          options:  [_("Global Default"), _("Enabled"), _("Disabled")],
+        )
+      end
 
       def parent_titles = parents.map { |candidate| candidate.nil? ? _("None") : candidate.name }
 
@@ -100,6 +120,7 @@ module Planify
           end
           emoji_picker.emoji = project.emoji.to_s
           color_picker.color = project.color.to_s
+          markdown_row.selected = MARKDOWN_SETTINGS.index(project.markdown_setting.to_s) || 0
           parent_row.selected = parents.index { |c| c&.id == project.parent_id } || 0
           if project.board?
             layout_row.selected = 1
@@ -109,6 +130,10 @@ module Planify
         else
           color_picker.color = Palette.random
         end
+
+        # A project that does not exist yet has nothing to override, so the
+        # per-project settings only appear once it does.
+        settings_group.visible = @editing
 
         refresh_icon_style
       end
@@ -131,6 +156,7 @@ module Planify
               record.emoji = emoji_picker.emoji
               record.color = color_picker.color
               record.parent_id = parents[parent_row.selected]&.id.to_s
+              record.markdown_setting = MARKDOWN_SETTINGS[markdown_row.selected].to_s
               if layout_row.selected == 1
                 record.view_style = "board"
               else
