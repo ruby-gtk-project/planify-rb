@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
+require "edataserver"
+
 module Planify
   module Services
     # core/Services/CalendarEvents. The system's own calendars, read through
-    # Evolution Data Server. There are no Ruby gems for libecal or
-    # libedataserver, so both are loaded straight from their typelibs — which
-    # is why the dev shell puts them on GI_TYPELIB_PATH and LD_LIBRARY_PATH.
+    # Evolution Data Server. The `edataserver` gem covers EDataServer itself;
+    # there is still no released gem for libecal or ICalGLib, so ECal and
+    # ICalGLib are loaded straight from their typelibs — which is why the dev
+    # shell puts them on GI_TYPELIB_PATH and LD_LIBRARY_PATH.
     module CalendarEvents
       Event = Struct.new(
 
@@ -47,7 +50,7 @@ module Planify
       end
 
       def load_bindings
-        %w[EDataServer ECal ICalGLib].all? { |namespace| GI.load(namespace) }
+        %w[ECal ICalGLib].all? { |namespace| GI.load(namespace) }
       end
 
       def enabled? = Settings.get_boolean("calendar-enabled") && available?

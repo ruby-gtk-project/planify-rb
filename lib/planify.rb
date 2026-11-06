@@ -61,6 +61,7 @@ require_relative "planify/services/export_service"
 require_relative "planify/services/productivity"
 require_relative "planify/services/api"
 require_relative "planify/services/migrate_from_planner"
+require_relative "planify/services/goa"
 require_relative "planify/services/action_manager"
 require_relative "planify/services/dbus_server"
 

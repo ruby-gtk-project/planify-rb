@@ -22,6 +22,9 @@ module Planify
             p.title = _("Accounts")
             p.icon_name = "cloud-outline-thick-symbolic"
             p.add(sources_group)
+            if detected_group.visible?
+              p.add(detected_group)
+            end
             p.add(add_group)
 
             add_group.add(todoist_row)
@@ -32,6 +35,40 @@ module Planify
             store.on(:source_added, owner: self) { reload }
             store.on(:source_updated, owner: self) { reload }
             store.on(:source_deleted, owner: self) { reload }
+          end
+        end
+
+        # core/Services/GOA.vala. An account GNOME Online Accounts already
+        # has set up, offered here so a user who already signed into
+        # Nextcloud from Settings does not have to retype the server.
+        def detected_group
+          @detected_group ||= Adwaita::PreferencesGroup.new.tap do |g|
+            g.title = _("Detected Accounts")
+            detected_accounts.each { |account| g.add(detected_row(account)) }
+            g.visible = !detected_accounts.empty?
+          end
+        end
+
+        def detected_accounts
+          @detected_accounts ||= Services::GOA.list_caldav_accounts
+        end
+
+        def detected_row(account)
+          Adwaita::ActionRow.new.tap do |row|
+            row.title = account.display_name.to_s
+            row.subtitle = account.server_uri.to_s
+            row.activatable = true
+            row.add_prefix(Gtk::Image.new(icon_name: account.nextcloud? ? "nextcloud" : "cloud-outline-thick-symbolic"))
+            row.add_suffix(Gtk::Image.new(icon_name: "go-next-symbolic"))
+            row.signal_connect("activated") do
+              CalDAVSetup.new(
+                dialog,
+                account.nextcloud? ? "nextcloud" : "generic",
+                url:        account.server_uri.to_s,
+                username:   account.username.to_s,
+                ignore_ssl: account.accept_ssl_errors,
+              ).present
+            end
           end
         end
 
@@ -426,9 +463,12 @@ module Planify
       # NextcloudSetup.vala — the same form, differing only in its wording and
       # in the URL it suggests.
       class CalDAVSetup
-        def initialize(parent, kind)
+        def initialize(parent, kind, url: nil, username: nil, ignore_ssl: false)
           @parent = parent
           @kind = kind
+          @prefill_url = url
+          @prefill_username = username
+          @prefill_ignore_ssl = ignore_ssl
         end
 
         attr_reader :parent, :kind
@@ -554,7 +594,9 @@ module Planify
         def url_row
           @url_row ||= Adwaita::EntryRow.new.tap do |row|
             row.title = _("Server Address")
-            if nextcloud?
+            if !@prefill_url.to_s.empty?
+              row.text = @prefill_url.to_s
+            elsif nextcloud?
               row.text = "https://"
             else
               row.text = ""
@@ -563,7 +605,10 @@ module Planify
         end
 
         def username_row
-          @username_row ||= Adwaita::EntryRow.new.tap { |row| row.title = _("Username") }
+          @username_row ||= Adwaita::EntryRow.new.tap do |row|
+            row.title = _("Username")
+            row.text = @prefill_username.to_s
+          end
         end
 
         def password_row
@@ -582,6 +627,7 @@ module Planify
           @ignore_ssl_row ||= Adwaita::SwitchRow.new.tap do |row|
             row.title = _("Accept Untrusted Certificates")
             row.subtitle = _("Only for a server whose certificate you trust yourself")
+            row.active = @prefill_ignore_ssl == true
           end
         end
 

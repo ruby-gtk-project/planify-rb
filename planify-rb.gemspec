@@ -109,6 +109,19 @@ Gem::Specification.new do |spec|
   #       Development dependencies that require strictly newer Ruby versions should be in a "gemfile",
   #       and preferably a modular one (see gemfiles/modular/*.gemfile).
 
+  # Runtime: the GTK4 / Libadwaita toolkit itself
+  spec.add_dependency("gtk4")
+  spec.add_dependency("adwaita")
+  spec.add_dependency("glib2")
+
+  # Runtime: this app's binding gems
+  spec.add_dependency("appstream")    # AppStream metadata (ErrorDialog's reference data)
+  spec.add_dependency("ashpd")        # xdg-desktop-portal (background/notification portals)
+  spec.add_dependency("edataserver")  # Evolution Data Server source registry (CalendarEvents)
+  spec.add_dependency("goa-rb")       # GNOME Online Accounts (Services::GOA)
+  spec.add_dependency("libspelling")  # Inline spellchecking for the editable text views
+  spec.add_dependency("soup3")        # HTTP, replacing the net/http + openssl standin
+
   # Dev, Test, & Release Tasks
   spec.add_development_dependency("kettle-dev", "~> 3.1", ">= 3.1.26")             # ruby >= 3.4
 

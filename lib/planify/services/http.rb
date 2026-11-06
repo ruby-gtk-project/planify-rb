@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require "net/http"
-require "openssl"
+require "soup3"
 
 module Planify
   module Services
@@ -39,23 +38,21 @@ module Planify
 
       # Blocking. Only the background thread and the tests call this directly.
       def request(method, url, body: nil, headers: {}, auth: nil, ignore_ssl: false)
-        uri = URI.parse(url)
         build(
           method,
-          uri,
+          url,
           body,
           headers,
           auth,
-        ).then do |message|
-          transport(uri, ignore_ssl).start do |http|
-            http.request(message).then do |response|
-              Response.new(
-                response.code.to_i,
-                response.body,
-                response.to_hash,
-                nil,
-              )
-            end
+          ignore_ssl,
+        ).then do |msg|
+          session.send_and_read(msg, nil).then do |bytes|
+            Response.new(
+              msg.status_code,
+              bytes.to_s,
+              response_headers(msg),
+              nil,
+            )
           end
         end
       rescue StandardError => error
@@ -68,55 +65,43 @@ module Planify
         )
       end
 
-      def transport(uri, ignore_ssl)
-        Net::HTTP.new(uri.host, uri.port).tap do |http|
-          http.use_ssl = uri.scheme == "https"
-          http.open_timeout = 20
-          http.read_timeout = 60
-          # Nextcloud on a self-signed certificate is common enough that
-          # Planify offers the switch per source.
-          if ignore_ssl
-            http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-          end
+      # A fresh session per request, the way a fresh Net::HTTP was used
+      # before.
+      def session
+        Soup::Session.new.tap do |s|
+          s.timeout = 60
+          s.idle_timeout = 20
         end
       end
 
-      METHODS = {
-        "GET"        => Net::HTTP::Get,
-        "POST"       => Net::HTTP::Post,
-        "PUT"        => Net::HTTP::Put,
-        "DELETE"     => Net::HTTP::Delete,
-        "PROPFIND"   => nil,
-        "REPORT"     => nil,
-        "MKCOL"      => nil,
-        "MKCALENDAR" => nil,
-      }.freeze
-
-      def build(method, uri, body, headers, auth)
-        message_class(method).new(uri).tap do |message|
-          headers.each { |name, value| message[name] = value }
+      def build(method, url, body, headers, auth, ignore_ssl)
+        Soup::Message.new(method, url).tap do |msg|
+          headers.each { |name, value| msg.request_headers.append(name.to_s, value.to_s) }
           unless auth.nil?
-            message.basic_auth(auth[0], auth[1])
+            msg.request_headers.append("Authorization", basic_auth(auth[0], auth[1]))
           end
           unless body.nil?
-            message.body = body
+            msg.set_request_body_from_bytes(
+              headers.fetch("Content-Type", "application/octet-stream"),
+              GLib::Bytes.new(body),
+            )
+          end
+          # Nextcloud on a self-signed certificate is common enough that
+          # Planify offers the switch per source. In libsoup3 the certificate
+          # signal lives on the message, not the session.
+          if ignore_ssl
+            msg.signal_connect("accept-certificate") { |*_args| true }
           end
         end
       end
 
-      # CalDAV needs verbs Net::HTTP has no class for; GenericRequest carries
-      # an arbitrary method, and a request with a body must say so.
-      def message_class(method)
-        METHODS.fetch(method, nil).then do |known|
-          if known.nil?
-            Class.new(Net::HTTPRequest) do
-              const_set(:METHOD, method)
-              const_set(:REQUEST_HAS_BODY, true)
-              const_set(:RESPONSE_HAS_BODY, true)
-            end
-          else
-            known
-          end
+      def basic_auth(user, pass)
+        "Basic #{Base64.strict_encode64("#{user}:#{pass}")}"
+      end
+
+      def response_headers(msg)
+        {}.tap do |hash|
+          msg.response_headers.each { |name, value| hash[name] = value }
         end
       end
 

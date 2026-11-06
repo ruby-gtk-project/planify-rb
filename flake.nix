@@ -16,6 +16,7 @@
             ruby_3_4
             bundler
             bundix
+            xvfb-run
             atk
             gtk4
             libadwaita
@@ -28,9 +29,24 @@
             libyaml
             sqlite
             evolution-data-server
-            # `make test` validates the appstream and desktop metadata.
+            # `make test` validates the appstream and desktop metadata, and
+            # the `appstream` gem's AppStream typelib comes from this package
+            # too.
             appstream
             desktop-file-utils
+            gsettings-desktop-schemas
+            adwaita-icon-theme
+
+            # Typelibs for this app's binding gems (goa-rb, libspelling,
+            # soup3). Everything comes from this one nixpkgs so GIO does not
+            # register a type twice.
+            gnome-online-accounts
+            libspelling
+            libsoup_3
+            # The GIO TLS backend soup3 (and any other GIO-based HTTPS
+            # client) needs at runtime; without it every https:// request
+            # fails with "TLS support is not available".
+            glib-networking
             gettext
             libxml2
             openssl
@@ -74,8 +90,17 @@
             # libecal and libedataserver have no Ruby gems; the calendar-event
             # service loads them straight from their typelibs, so both the
             # typelib and the shared library have to be findable.
-            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.libadwaita}/lib/girepository-1.0:${pkgs.evolution-data-server}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.libadwaita}/lib/girepository-1.0:${pkgs.evolution-data-server}/lib/girepository-1.0:${pkgs.appstream}/lib/girepository-1.0:${pkgs.gnome-online-accounts}/lib/girepository-1.0:${pkgs.libspelling}/lib/girepository-1.0:${pkgs.libsoup_3}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
             export LD_LIBRARY_PATH="${pkgs.evolution-data-server}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            # ashpd carries a Rust extension; its precompiled platform gem
+            # needs no compiler and must not be swapped for the source gem.
+            export BUNDLE_FORCE_RUBY_PLATFORM=false
+            export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
+            # GTK's own built-in dialogs (the emoji chooser among them) load
+            # their GSettings schema from here; without it a dialog that
+            # touches one aborts the process rather than merely losing a
+            # feature.
+            export XDG_DATA_DIRS="${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}:${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.adwaita-icon-theme}/share''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
           '';
         };
       }
