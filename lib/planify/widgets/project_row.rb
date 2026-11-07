@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
 module Planify
-  # Layouts/ProjectRow.vala: one project in the sidebar — its emoji or its
-  # progress ring, its name, the pending count, and the project menu.
+  # Layouts/ProjectRow.vala and Layouts/ProjectContainerRow.vala merged, the
+  # way LabelRow merges its own container: one project in the sidebar — its
+  # emoji or its progress ring, its name, the pending count, and the project
+  # menu, wrapped in the revealer ProjectContainerRow added so a project
+  # slides into the tree rather than simply appearing, and slides back out
+  # before the row is actually removed.
   class ProjectRow
     def initialize(window, project, depth = 0)
       @window = window
@@ -14,7 +18,9 @@ module Planify
 
     def build
       @build ||= row.tap do |r|
-        r.child = box
+        r.child = main_revealer
+
+        main_revealer.child = box
 
         box.tap do |b|
           b.append(icon_stack)
@@ -32,6 +38,11 @@ module Planify
 
         register_actions
         refresh
+
+        GLib::Timeout.add(main_revealer.transition_duration) do
+          main_revealer.reveal_child = true
+          false
+        end
       end
     end
 
@@ -161,6 +172,7 @@ module Planify
     end
 
     def archive
+      hide_destroy
       store.archive_project(project)
       window.drop_view("project-#{project.id}")
       window.toast_with_undo(_("Project archived")) { store.unarchive_project(project) }
@@ -176,6 +188,7 @@ module Planify
         dialog.set_response_appearance("delete", Adwaita::ResponseAppearance::DESTRUCTIVE)
         dialog.signal_connect("response") do |_, response|
           if response == "delete"
+            hide_destroy
             window.drop_view("project-#{project.id}")
             store.delete_project(project)
             window.go_inbox
@@ -185,11 +198,31 @@ module Planify
       end
     end
 
+    # The row collapses before it is taken out, so a deletion or an archive
+    # reads as the row closing up rather than as the list snapping shorter.
+    def hide_destroy
+      main_revealer.reveal_child = false
+      GLib::Timeout.add(main_revealer.transition_duration) do
+        row.parent.then do |parent|
+          unless parent.nil?
+            parent.remove(row)
+          end
+        end
+        false
+      end
+    end
+
     # --- widgets --------------------------------------------------------
 
     def row
       @row ||= Gtk::ListBoxRow.new.tap do |r|
         r.add_css_class("project-row")
+      end
+    end
+
+    def main_revealer
+      @main_revealer ||= Gtk::Revealer.new.tap do |r|
+        r.transition_type = :slide_down
       end
     end
 

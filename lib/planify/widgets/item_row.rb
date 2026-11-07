@@ -47,10 +47,11 @@ module Planify
             box.append(priority_icon)
 
             actions_box.tap do |actions|
-              actions.append(pin_button)
+              actions.append(pin_widget.build)
+              actions.append(priority_widget.build)
+              actions.append(deadline_widget.build)
               actions.append(menu_button)
 
-              pin_button.signal_connect("clicked") { toggle_pinned }
               menu_button.menu_model = context_menu
             end
           end
@@ -100,10 +101,11 @@ module Planify
       refresh_priority
 
       recurring_icon.visible = item.recurring?
-      if item.pinned?
-        pin_button.icon_name = "pin-symbolic"
-      else
-        pin_button.icon_name = "pin-symbolic"
+      pin_widget.update_from_item(item)
+      priority_widget.update_from_item(item)
+      deadline_widget.datetime = item.deadline
+      [pin_widget.button, priority_widget.button, deadline_widget.button].each do |button|
+        button.sensitive = !item.checked?
       end
       if item.checked?
         row.add_css_class("complete-animation")
@@ -216,6 +218,16 @@ module Planify
       else
         item.pinned = 1
       end
+      store.update_item(item)
+    end
+
+    def set_priority(level)
+      item.priority = level
+      store.update_item(item)
+    end
+
+    def set_deadline(date)
+      item.deadline_date = date.nil? ? "" : Datetime.format(date)
       store.update_item(item)
     end
 
@@ -368,11 +380,14 @@ module Planify
       end
     end
 
-    def pin_button
-      @pin_button ||= Gtk::Button.new(icon_name: "pin-symbolic").tap do |button|
-        button.add_css_class("flat")
-        button.tooltip_text = _("Pin")
-      end
+    def pin_widget = @pin_widget ||= PinButton.new { toggle_pinned }
+
+    def priority_widget
+      @priority_widget ||= PriorityButton.new { |level| set_priority(level) }
+    end
+
+    def deadline_widget
+      @deadline_widget ||= DeadlineButton.new { |date| set_deadline(date) }
     end
 
     def priority_icon

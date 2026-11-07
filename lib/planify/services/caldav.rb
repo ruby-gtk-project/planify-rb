@@ -65,24 +65,37 @@ module Planify
       # Runs the whole chain and answers once, because every step depends on
       # the one before it and the caller only cares whether the account works.
       def discover(source, &done)
-        WebDAV.propfind(
-          source,
-          "",
-          PRINCIPAL_XML,
-          "0",
-        ) do |response, resources|
-          if !response.ok?
-            done.call(false, failure_for(response))
-          else
-            principal_href(resources).then do |principal|
-              if principal.empty?
-                done.call(false, _("The server did not identify this user."))
-              else
-                discover_home(source, principal, &done)
+        if source["bypass_resolve"] == true
+          discover_bypassing_resolve(source, &done)
+        else
+          WebDAV.propfind(
+            source,
+            "",
+            PRINCIPAL_XML,
+            "0",
+          ) do |response, resources|
+            if !response.ok?
+              done.call(false, failure_for(response))
+            else
+              principal_href(resources).then do |principal|
+                if principal.empty?
+                  done.call(false, _("The server did not identify this user."))
+                else
+                  discover_home(source, principal, &done)
+                end
               end
             end
           end
         end
+      end
+
+      # Widgets/BypassResolveSwitchRow.vala exists for a server whose
+      # non-default port breaks the principal/home-set PROPFIND chain above;
+      # with it on, the address the user typed is trusted as the calendar
+      # home outright and only the user-data lookup still runs.
+      def discover_bypassing_resolve(source, &done)
+        source["calendar_home_url"] = source["server_url"].to_s
+        fetch_userdata(source, "", &done)
       end
 
       def principal_href(resources)
@@ -622,14 +635,15 @@ module Planify
 
       # --- account setup ---------------------------------------------------
 
-      def build_source(server_url, username, password, kind, ignore_ssl)
+      def build_source(server_url, username, password, kind, ignore_ssl, bypass_resolve: false)
         Source.new(source_type: "caldav", sync_server: 1).tap do |source|
           source.merge_payload(
-            "server_url"  => server_url,
-            "username"    => username,
-            "password"    => password,
-            "caldav_type" => kind,
-            "ignore_ssl"  => ignore_ssl,
+            "server_url"      => server_url,
+            "username"        => username,
+            "password"        => password,
+            "caldav_type"     => kind,
+            "ignore_ssl"      => ignore_ssl,
+            "bypass_resolve"  => bypass_resolve,
           )
         end
       end

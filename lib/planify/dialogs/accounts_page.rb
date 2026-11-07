@@ -496,6 +496,7 @@ module Planify
               server_group.add(password_row)
 
               options_group.add(ignore_ssl_row)
+              options_group.add(bypass_resolve_row.build)
 
               action_group.add(connect_row)
 
@@ -526,6 +527,7 @@ module Planify
             password_row.text,
             kind,
             ignore_ssl_row.active?,
+            bypass_resolve: bypass_resolve_row.active?,
           )
         end
 
@@ -630,6 +632,8 @@ module Planify
             row.active = @prefill_ignore_ssl == true
           end
         end
+
+        def bypass_resolve_row = @bypass_resolve_row ||= BypassResolveSwitchRow.new(dialog)
 
         def action_group
           @action_group ||= Adwaita::PreferencesGroup.new.tap do |g|

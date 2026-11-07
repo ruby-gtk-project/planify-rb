@@ -114,6 +114,13 @@ Gem::Specification.new do |spec|
   spec.add_dependency("adwaita")
   spec.add_dependency("glib2")
 
+  # Runtime: the database and the translation layer, both required
+  # unconditionally by lib/planify.rb — without them the app cannot start.
+  spec.add_dependency("sqlite3")
+  spec.add_dependency("gettext")
+  spec.add_dependency("base64") # no longer a default gem as of Ruby 3.4
+  spec.add_dependency("rexml")  # no longer a default gem as of Ruby 3.4; WebDAV parses XML with it
+
   # Runtime: this app's binding gems
   spec.add_dependency("appstream")    # AppStream metadata (ErrorDialog's reference data)
   spec.add_dependency("ashpd")        # xdg-desktop-portal (background/notification portals)
