@@ -82,6 +82,8 @@
             util-linux
             xz
             zstd
+
+            rubyPackages_3_4.rspec
           ];
 
           shellHook = ''
@@ -101,6 +103,26 @@
             # touches one aborts the process rather than merely losing a
             # feature.
             export XDG_DATA_DIRS="${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}:${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.adwaita-icon-theme}/share''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+            # RUBYLIB is what makes the test/ scripts, which require_relative
+            # into lib/, work from a checkout.
+            export RUBYLIB="$PWD/lib''${RUBYLIB:+:$RUBYLIB}"
+            # The repo-root Gemfile is kettle-jem's development bundle
+            # (rubocop, rspec, yard, the kettle-dev stack); several of those
+            # gems require a newer Ruby than this shell ships, so `bundle
+            # install` against it fails version solving outright. nix/Gemfile
+            # holds just the gemspec's runtime dependencies, already
+            # installed into nix/vendor/bundle (checked in, built with
+            # --use-system-libraries against this same nixpkgs), so point
+            # Bundler there instead of at the root Gemfile.
+            export BUNDLE_GEMFILE="$PWD/nix/Gemfile"
+            export BUNDLE_PATH__SYSTEM="false"
+            export BUNDLE_PATH="$PWD/nix/vendor/bundle"
+
+            echo "planify devshell — ruby $(ruby -e 'print RUBY_VERSION')"
+            echo "run the app:   nix develop --command xvfb-run -a bundle exec ruby bin/planify-dev"
+            echo "drive the app: GSETTINGS_SCHEMA_DIR=\$PWD/data nix develop --command xvfb-run -a bundle exec ruby test/drive_main.rb"
+            echo "run the specs: GSETTINGS_SCHEMA_DIR=\$PWD/data bundle exec ruby test/test_load.rb test/test_sync.rb test/test_cli.rb"
+            echo "check it all:  make test"
           '';
         };
       }

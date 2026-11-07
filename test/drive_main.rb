@@ -569,6 +569,45 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
     d.shot("29-caldav-account")
   end
 
+  d.step("a section can be added to the tutorial project") do
+    store.call.projects.reject(&:inbox?).first.then do |project|
+      @section_dialog = Dialogs::SectionDialog.new(window.call, project)
+      @section_dialog.present(window.call.window)
+    end
+  end
+
+  d.step("fill the section dialog") do
+    @section_dialog.name_row.text = "Harvest"
+  end
+
+  d.step("the section dialog renders, then saves") do
+    d.shot("31-section-dialog")
+    @section_dialog.save
+  end
+
+  d.step("the section exists") do
+    store.call.projects.reject(&:inbox?).first.then do |project|
+      d.check("a third section exists") do
+        store.call.sections_by_project(project.id).any? { |s| s.name == "Harvest" }
+      end
+    end
+    window.call.window.visible_dialog&.close
+  end
+
+  d.step("the productivity report opens") do
+    @report = Dialogs::ProductivityReport.new
+    @report.present(window.call.window)
+  end
+
+  d.step("the report renders its cards and heat map") do
+    d.check("today's card reflects the one completion") do
+      @report.today_card.value_label.label.to_i >= 1
+    end
+    d.check("the heat map has data") { !@report.heat_map.data.nil? }
+    d.shot("32-productivity-report")
+    window.call.window.visible_dialog&.close
+  end
+
   d.step("deleting a synced task queues what the server call needs") do
     store.call.insert_project(Project.new(name: "Remote", source_id: @caldav.id)).then do |project|
       @remote_item = Item.new(content: "Remote task", project_id: project.id)
