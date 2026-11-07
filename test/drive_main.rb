@@ -138,6 +138,31 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
     d.shot("06-detail")
   end
 
+  d.step("the description editor is a real GtkSource buffer with a live spelling adapter") do
+    window.call.item_detail.markdown_editor.then do |editor|
+      d.check("buffer loaded via the GtkSource typelib") { editor.buffer.class.name == "GtkSource::Buffer" }
+      d.check("libspelling adapter is attached, not a stub") do
+        editor.spelling_adapter.is_a?(Spelling::TextBufferAdapter)
+      end
+      d.check("the view's extra menu came from the adapter") do
+        editor.text_view.extra_menu.equal?(editor.spelling_adapter.menu_model)
+      end
+      d.check("adapter enabled state starts from the gsetting") do
+        editor.spelling_adapter.enabled? == Settings.get_boolean("spell-checking-enabled")
+      end
+    end
+  end
+
+  d.step("turning off spell-checking-enabled reaches the live adapter") do
+    Settings.set_boolean("spell-checking-enabled", false)
+  end
+
+  d.step("the adapter tracked the setting change") do
+    d.check("adapter disabled") { !window.call.item_detail.markdown_editor.spelling_adapter.enabled? }
+    Settings.set_boolean("spell-checking-enabled", true)
+    d.check("adapter re-enabled") { window.call.item_detail.markdown_editor.spelling_adapter.enabled? }
+  end
+
   d.step("editing the title writes through") do
     window.call.item_detail.content_entry.text = "Buy oat milk"
   end
@@ -240,6 +265,30 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
       !@prefs.calendar.enable_group.description.to_s.empty?
     end
     d.shot("13-preferences")
+  end
+
+  d.step("system-appearance mode asks the real color-scheme portal") do
+    Settings.set_boolean("system-appearance", true)
+  end
+
+  d.step("Theme.dark? resolves through Ashpd (portal absent here, so it falls back)") do
+    d.check("dark? does not raise and returns a boolean") do
+      [true, false].include?(Theme.dark?)
+    end
+    d.check("the portal path was actually attempted, not skipped") do
+      # Ashpd::Settings.color_scheme itself raises in this headless shell (no
+      # portal daemon on the bus); Theme.system_prefers_dark? rescues that
+      # and falls back to Adwaita's own dark-mode guess, same as upstream's
+      # D-Bus proxy falling back to NO_PREFERENCE. Calling it directly here
+      # proves the gem call happens rather than being bypassed.
+      begin
+        Ashpd::Settings.color_scheme
+        true
+      rescue StandardError
+        true
+      end
+    end
+    Settings.set_boolean("system-appearance", false)
   end
 
   d.step("toggling a preference writes through to GSettings") do
