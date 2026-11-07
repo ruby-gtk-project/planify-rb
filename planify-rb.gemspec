@@ -122,11 +122,15 @@ Gem::Specification.new do |spec|
   spec.add_dependency("rexml")  # no longer a default gem as of Ruby 3.4; WebDAV parses XML with it
 
   # Runtime: this app's binding gems
-  spec.add_dependency("appstream")    # AppStream metadata (ErrorDialog's reference data)
-  spec.add_dependency("ashpd")        # xdg-desktop-portal (background/notification portals)
+  #
+  # `appstream` was dropped: upstream never touches the AppStream GI
+  # namespace anywhere in src/ or core/ — the only "appstream" in its tree is
+  # a URI scheme string and a Flathub REST path, and metadata validation goes
+  # through the `appstreamcli` binary (still in flake.nix), not this gem.
+  spec.add_dependency("ashpd")        # xdg-desktop-portal Settings (Theme's dark-mode detection)
   spec.add_dependency("edataserver")  # Evolution Data Server source registry (CalendarEvents)
   spec.add_dependency("goa-rb")       # GNOME Online Accounts (Services::GOA)
-  spec.add_dependency("libspelling")  # Inline spellchecking for the editable text views
+  spec.add_dependency("libspelling")  # Inline spellchecking for the editable text views (MarkdownEditor)
   spec.add_dependency("soup3")        # HTTP, replacing the net/http + openssl standin
 
   # Dev, Test, & Release Tasks

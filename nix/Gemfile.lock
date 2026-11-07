@@ -4,9 +4,6 @@ GEM
     adwaita (4.4.0)
       gtk4 (= 4.4.0)
       rake
-    appstream (1.0.0)
-      gem_kit (~> 0.2)
-      gobject-introspection (~> 4.3)
     ashpd (0.1.1-aarch64-linux)
       gem_kit (~> 0.2)
     ashpd (0.1.1-aarch64-linux-musl)
@@ -123,7 +120,6 @@ PLATFORMS
 
 DEPENDENCIES
   adwaita
-  appstream
   ashpd
   base64
   edataserver

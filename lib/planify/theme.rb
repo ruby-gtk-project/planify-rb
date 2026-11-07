@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "ashpd"
+
 module Planify
   # Util.update_theme / update_font_scale. The shipped variables.css holds only
   # the light palette; upstream overrides those @define-colors at runtime for
@@ -52,10 +54,23 @@ module Planify
 
     def dark?
       if Settings.get_boolean("system-appearance")
-        Adwaita::StyleManager.default.dark?
+        system_prefers_dark?
       else
         Settings.get_boolean("dark-mode")
       end
+    end
+
+    # core/Services/ColorSchemeSettings.vala hand-rolls a D-Bus proxy for the
+    # XDG Settings portal (org.freedesktop.portal.Settings, "color-scheme")
+    # rather than trusting a toolkit's own guess. `ashpd` speaks that same
+    # portal; when it is not running (no portal daemon, as in this headless
+    # dev shell) it raises and, same as upstream's catch falling back to
+    # NO_PREFERENCE, Adwaita's own dark-mode detection stands in instead.
+    def system_prefers_dark?
+      Ashpd::Settings.color_scheme == :prefer_dark
+    rescue StandardError => error
+      Services::LogService.debug("Theme", "color-scheme portal unavailable: #{error.message}")
+      Adwaita::StyleManager.default.dark?
     end
 
     def color_scheme

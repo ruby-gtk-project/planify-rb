@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "libspelling"
+
 module Planify
   # core/Widgets/MarkdownEditor.vala. A TextView that styles Markdown as it is
   # typed rather than rendering it: the source stays editable and the
@@ -57,6 +59,7 @@ module Planify
         end
 
         register_tags
+        register_spelling
       end
     end
 
@@ -105,6 +108,29 @@ module Planify
       buffer.tag_table.lookup("link").tap do |tag|
         tag.foreground_rgba = Gdk::RGBA.parse(Theme::DEFAULT_ACCENT)
       end
+    end
+
+    # `libspelling` only adapts a GtkSource::Buffer, which is why `buffer`
+    # builds one instead of a plain Gtk::TextBuffer (GtkSource::Buffer is a
+    # subclass, so every TextBuffer call above still works unchanged).
+    # Mirrors core/Widgets/MarkdownEditor.vala's `#if WITH_LIBSPELLING` block:
+    # the adapter is handed the view's extra menu and action group, and its
+    # `enabled` tracks the "spell-checking-enabled" setting for as long as the
+    # editor lives.
+    def register_spelling
+      spelling_adapter.tap do |adapter|
+        text_view.extra_menu = adapter.menu_model
+        text_view.insert_action_group("spelling", adapter)
+        adapter.enabled = Settings.get_boolean("spell-checking-enabled")
+
+        Settings.changed("spell-checking-enabled") do
+          adapter.enabled = Settings.get_boolean("spell-checking-enabled")
+        end
+      end
+    end
+
+    def spelling_adapter
+      @spelling_adapter ||= Spelling::TextBufferAdapter.new(buffer, Spelling::Checker.default)
     end
 
     def restyle
@@ -312,7 +338,12 @@ module Planify
       end
     end
 
-    def buffer = @buffer ||= Gtk::TextBuffer.new
+    # GtkSource::Buffer isn't in any released ruby-gnome gem; `libspelling`'s
+    # typelib pulls in GtkSourceView's, so the same on-demand GI loader the
+    # calendar service uses for ECal/ICalGLib loads this one too.
+    def buffer
+      @buffer ||= Services::GI.load("GtkSource").then { GtkSource::Buffer.new(nil) }
+    end
 
     def text_view
       @text_view ||= Gtk::TextView.new(buffer).tap do |view|

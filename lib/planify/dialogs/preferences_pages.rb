@@ -114,6 +114,7 @@ module Planify
             task_group.add(open_sidebar_row)
             task_group.add(details_sidebar_row)
             task_group.add(markdown_row)
+            task_group.add(spell_checking_row)
             task_group.add(subtasks_row)
             task_group.add(tone_row)
 
@@ -218,6 +219,16 @@ module Planify
               _("Style descriptions as you type them"),
             ),
             "enable-markdown-formatting",
+          )
+        end
+
+        def spell_checking_row
+          @spell_checking_row ||= bind_switch(
+            switch_row(
+              _("Enable Spell Checking"),
+              _("Check spelling in task descriptions and notes"),
+            ),
+            "spell-checking-enabled",
           )
         end
 

@@ -29,9 +29,13 @@
             libyaml
             sqlite
             evolution-data-server
-            # `make test` validates the appstream and desktop metadata, and
-            # the `appstream` gem's AppStream typelib comes from this package
-            # too.
+            # `make test` validates the appstream and desktop metadata with
+            # the `appstreamcli` binary this package provides. Nothing under
+            # lib/ loads the AppStream GI namespace — upstream never touches
+            # it either, only the literal "appstream://" URI scheme and a
+            # Flathub REST path — so its typelib is not on GI_TYPELIB_PATH
+            # below and the Ruby `appstream` gem was dropped from the
+            # gemspec.
             appstream
             desktop-file-utils
             gsettings-desktop-schemas
@@ -92,7 +96,7 @@
             # libecal and libedataserver have no Ruby gems; the calendar-event
             # service loads them straight from their typelibs, so both the
             # typelib and the shared library have to be findable.
-            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.libadwaita}/lib/girepository-1.0:${pkgs.evolution-data-server}/lib/girepository-1.0:${pkgs.appstream}/lib/girepository-1.0:${pkgs.gnome-online-accounts}/lib/girepository-1.0:${pkgs.libspelling}/lib/girepository-1.0:${pkgs.libsoup_3}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.libadwaita}/lib/girepository-1.0:${pkgs.evolution-data-server}/lib/girepository-1.0:${pkgs.gnome-online-accounts}/lib/girepository-1.0:${pkgs.libspelling}/lib/girepository-1.0:${pkgs.libsoup_3}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
             export LD_LIBRARY_PATH="${pkgs.evolution-data-server}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
             # ashpd carries a Rust extension; its precompiled platform gem
             # needs no compiler and must not be swapped for the source gem.
