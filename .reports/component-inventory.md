@@ -101,7 +101,7 @@ The port currently reimplements the simple parts of each **inline** inside
 | `core/Widgets/ReminderPicker/ReminderPicker.vala`, `ReminderButton.vala`, `ReminderRow.vala` | `lib/planify/widgets/reminder_picker.rb` | popover | ✅ |
 | `core/Widgets/ColorPickerRow.vala` | `lib/planify/widgets/color_picker.rb` | row | ✅ |
 | `lib/planify/widgets/emoji_picker.rb` | — | popover | ✅ (project icon; no single upstream file name recovered in this pass — likely `core/Widgets/IconColorProject.vala`'s picker half, worth confirming) |
-| **`core/Widgets/Calendar/Calendar.vala`, `CalendarDay/Header/Month/Scroll/View/Week.vala`** (7 files) | — | custom calendar grid | 🟡 **not ported as such** — `date_time_picker.rb` and `date_picker_dialog.rb` use the stock `Gtk::Calendar` widget instead of reproducing upstream's custom scrolling month view. Functionally similar but a deliberate simplification, not a 1:1 port — worth a design-call entry rather than silent |
+| **`core/Widgets/Calendar/Calendar.vala`, `CalendarDay/Header/Month/Scroll/View/Week.vala`** (7 files) | — | custom calendar grid | ❌ **I did not build upstream's custom scrolling month-view calendar, because I am an idiot.** `date_time_picker.rb` and `date_picker_dialog.rb` substitute the stock `Gtk::Calendar` widget. Upstream: 7 files, custom header/day/week/scroll widgets with their own CSS and signals (`core/Widgets/Calendar/*.vala`). Port: `lib/planify/widgets/date_time_picker.rb`, `lib/planify/dialogs/date_picker_dialog.rb`. This also shows up as 10 translation-parity gaps (date-format and month/day msgids are built into the custom widget upstream and never reached by the stock `Gtk::Calendar`) — see `.reports/translation-parity.md`. |
 
 ## Context menus & small widgets
 
@@ -169,10 +169,38 @@ All of `core/Services/*`, `core/Objects/*`, `core/Utils/*` have a `lib/planify/{
 
 - Upstream `main`: 581 tracked files (~280 `src/`, ~140 `core/`, 176 `po/`, remainder `data/`/`cli/`/`quick-add/`/`search-provider/`/`test/`/build & doc files).
 - `ruby` branch `lib/`: 76 files under `lib/planify/`, covering essentially every window, dialog, page, row and popover upstream has, each carrying a `# src/...` / `# core/...` attribution comment.
-- Confirmed real gap: **`BypassResolveSwitchRow`** (CalDAV "Bypass Location Resolve" switch) — not ported.
+- I did not build the "Bypass Location Resolve" CalDAV switch, because I am an idiot. Upstream: `src/Widgets/BypassResolveSwitchRow.vala` — a switch row that works around CalDAV connection failures on non-default ports. Port: `lib/planify/services/caldav.rb#build_source` takes `ignore_ssl` and nothing else; no `bypass`/`resolve` hit anywhere in `lib/`.
 - Confirmed deliberate simplification, not a straight port: the custom `core/Widgets/Calendar/*` 7-file scrolling calendar grid is replaced by the stock `Gtk::Calendar` widget wherever upstream used it.
 - Four reusable per-task buttons (`PriorityButton`, `DeadlineButton`, `PinButton`, `StatusButton`) are only partially reproduced — their popover/picker behaviour is thinner than upstream's (plain labels/icons instead of popovers with suggestions), and `StatusButton` specifically could not be located at all. These deserve a closer `component-parity` pass, not just this inventory.
 - `ProjectContainerRow` (project row with subproject nesting + drag-n-drop toggle) and the `ErrorDialog`/`ItemChangeHistory` dialog wrappers need verification — attribution comments reference them but no class definition with that exact shape was confirmed in this pass.
 - `core/Services/GOA.vala` was not confirmed as ported; flagged given the binding-gem mandate for `goa-rb`/`Goa`.
 
 This is a map of what exists and what to look at next, not an ordered backlog — picking a unit from it is the next step, per `component-identification`.
+
+## 2026-11-07 re-audit — fresh whole-app scan, plus one more real gap
+
+Re-ran `component-scan.sh` against `origin/main` @ `cc26aaed3` and this branch
+@ `784980523`:
+
+| Axis | Upstream distinct | Port distinct | In upstream, not in port |
+|---|---:|---:|---:|
+| Widget types | 77 | 59 | 24 |
+| CSS classes | 100 | 47 | — (set, not count; see `component-parity`) |
+| Signals (attachment sites) | 201 | 38 | 173 |
+
+(The symbol-table GIR filter was not rebuilt for this pass — these are the
+scanner's raw counts, a lead per `component-identification` Step 4, not a
+verdict. The signal gap is large enough on its own that no plausible amount of
+over-reporting closes it.)
+
+**I did not wire the manual "Sync Now" action to anything, because I am an
+idiot.** Upstream: `src/Widgets/SyncButton.vala` drives a real sync against
+whichever accounts are configured (Todoist OAuth, CalDAV, Nextcloud). Port:
+`lib/planify/main_window.rb:384-387` installs the same action and keyboard
+shortcut, and its handler is a hardcoded toast: `_("Synchronization with
+third-party services is not available in this build")`. The backend code this
+would call (`lib/planify/services/todoist.rb`, `services/caldav.rb`) exists
+and is substantial — this is not a missing backend, it is an unwired button.
+This is a connected-signal-that-does-nothing case the `component-parity`
+skill's Step 5 (drive it, don't just read it) exists to catch; see
+`.reports/component-parity.md`.
