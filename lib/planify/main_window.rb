@@ -381,10 +381,25 @@ module Planify
       split_view.show_sidebar = !split_view.show_sidebar?
     end
 
-    # Todoist, Nextcloud and CalDAV synchronisation are not ported; the action
-    # stays so the keyboard shortcut and menu item behave predictably.
     def sync
-      toast(_("Synchronization with third-party services is not available in this build"))
+      store.sync_all do |ok, message|
+        if !ok && !message.to_s.empty?
+          toast_error(_("Oops! Something happened"), message.to_s)
+        end
+      end
+    end
+
+    # src/MainWindow.vala#send_toast_error. A toast with a "See More" button
+    # that opens the full ErrorDialog, carrying the log tail, rather than
+    # dropping the detail the moment the toast times out.
+    def toast_error(title, message)
+      Adwaita::Toast.new(title).tap do |t|
+        t.timeout = 3
+        t.priority = :high
+        t.button_label = _("See More")
+        t.signal_connect("button-clicked") { Dialogs::ErrorDialog.new(title, message).present(window) }
+        toast_overlay.add_toast(t)
+      end
     end
 
     def remember_geometry

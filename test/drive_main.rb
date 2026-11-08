@@ -134,8 +134,33 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
       d.check("content entry filled") { detail.content_entry.text == "Buy milk" }
       d.check("priority combo on P1") { detail.priority_row.selected.zero? }
       d.check("sidebar revealed") { window.call.detail_split_view.show_sidebar? }
+      d.check("the status button reflects the fresh task as To Do") do
+        detail.status_button.build
+        detail.status_button.value_label.label == "To Do"
+      end
     end
     d.shot("06-detail")
+  end
+
+  d.step("marking the task complete through the status button writes through the store") do
+    store.call.complete_item(store.call.item(@created.id), true)
+  end
+
+  d.step("the completed item reloads into the status button") do
+    window.call.show_item(store.call.item(@created.id))
+    window.call.item_detail.then do |detail|
+      d.check("the backing item is now checked") { detail.item.checked? }
+      d.check("the status button shows Complete after a real reload") do
+        detail.status_button.value_label.label == "Complete"
+      end
+    end
+  end
+
+  # Later steps (search, filters, pinning) assume @created is still an open
+  # task, so the status button's write-through is undone once it is proven.
+  d.step("the task is reopened so later steps see it un-completed again") do
+    store.call.complete_item(store.call.item(@created.id), false)
+    window.call.show_item(store.call.item(@created.id))
   end
 
   d.step("the description editor is a real GtkSource buffer with a live spelling adapter") do
@@ -625,6 +650,21 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
       window.call.sidebar.source_rows.size == 2
     end
     d.shot("29-caldav-account")
+  end
+
+  d.step("MainWindow#sync dispatches to the real CalDAV backend") do
+    window.call.sync_button.build
+    window.call.sync
+  end
+
+  d.step("the sync failure reaches the sync button's real state, not a stubbed toast") do
+    d.check("the sync button settled into its error state") do
+      window.call.sync_button.stack.visible_child_name == "error"
+    end
+    d.check("the sync button's tooltip carries the backend's own error message") do
+      !window.call.sync_button.button.tooltip_text.to_s.empty? &&
+        window.call.sync_button.button.tooltip_text != "Sync"
+    end
   end
 
   d.step("a section can be added to the tutorial project") do

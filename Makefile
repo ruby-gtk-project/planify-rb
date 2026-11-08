@@ -22,7 +22,10 @@ resources:
 		--target=planify.gresource $(APP_ID).gresource.xml
 
 test: resources
-	bundle exec rubocop
+	# rubocop lives in the repo-root kettle-jem Gemfile, not nix/Gemfile (the
+	# runtime-only closure the dev shell's BUNDLE_GEMFILE points at), so it is
+	# resolved explicitly here rather than inheriting the ambient BUNDLE_GEMFILE.
+	BUNDLE_GEMFILE=$(CURDIR)/Gemfile bundle exec rubocop
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_load.rb
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_sync.rb
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/data bundle exec ruby test/test_cli.rb

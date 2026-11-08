@@ -62,6 +62,7 @@ module Planify
 
     def build_properties
       properties_group.tap do |group|
+        group.add(status_row)
         group.add(project_row)
         group.add(due_row)
         group.add(deadline_row)
@@ -70,6 +71,7 @@ module Planify
         group.add(reminders_row)
         group.add(pinned_row)
 
+        wire_status_row
         wire_project_row
         wire_due_row
         wire_deadline_row
@@ -78,6 +80,13 @@ module Planify
         wire_reminders_row
 
         pinned_row.signal_connect("notify::active") { save_pinned }
+      end
+    end
+
+    def wire_status_row
+      status_row.tap do |row|
+        row.activatable_widget = status_button.build
+        row.add_suffix(status_button.build)
       end
     end
 
@@ -171,6 +180,8 @@ module Planify
         content_entry.text = value.content.to_s
         markdown_editor.text = value.description.to_s
         complete_button.active = value.checked?
+        status_button.update_from_item(value)
+        status_row.sensitive = !value.note?
         priority_row.selected = priority_index(value.priority.to_i)
         pinned_row.active = value.pinned?
         date_picker.datetime = value.due_date
@@ -500,6 +511,14 @@ module Planify
       @properties_group ||= Adwaita::PreferencesGroup.new.tap do |group|
         group.title = _("Details")
       end
+    end
+
+    def status_row
+      @status_row ||= Adwaita::ActionRow.new.tap { |row| row.title = _("Status") }
+    end
+
+    def status_button
+      @status_button ||= StatusButton.new { |active| store.complete_item(item, active) }
     end
 
     def project_row
