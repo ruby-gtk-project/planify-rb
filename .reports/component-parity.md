@@ -1,5 +1,66 @@
 # Component parity — planify-rb
 
+## 2026-11-08 re-audit — corrects the runtime-gate claim below, and confirms three new dead-code gaps
+
+**The headline finding below ("the runtime gate is down") was wrong, and the
+error was in how the prior pass ran `bundle install`, not in the repo.** It
+set `BUNDLE_GEMFILE=$PWD/Gemfile`, pointing at the repo-root Gemfile (the
+kettle-jem development bundle), which does require Ruby >= 4.0 through
+`kettle-family` and does fail to resolve on this shell's Ruby 3.4.9. But
+`nix develop` itself sets `BUNDLE_GEMFILE` to `nix/Gemfile` (the generated
+runtime gemset), and under that Gemfile the dependencies are already
+satisfied. Run fresh this pass:
+
+```
+GSETTINGS_SCHEMA_DIR=$PWD/data nix develop --command xvfb-run -a bundle exec ruby test/drive_main.rb
+# → 107 of 107 checks passed, DRIVE OK
+GSETTINGS_SCHEMA_DIR=$PWD/data nix develop --command xvfb-run -a bundle exec ruby test/test_load.rb test/test_sync.rb test/test_cli.rb
+# → all checks passed
+```
+
+This matches this round's runtime gate (`drive_ok=true`, 107 passed, 0
+failed, 24 components covered) exactly, reproduced independently. Steps 4-5
+**can** and now **have** been run for the units the drive actually exercises.
+See `.reports/accountability-ensurance.md` — a false "nothing can run" claim
+recorded in a parity report is exactly the failure that skill exists to
+catch, and this round it was found in this project's own prior report, not
+just in application code.
+
+**That does not make this a clean pass.** `test/drive_main.rb` covers **24
+components** by this round's own count. `lib/planify/` holds **93 files**.
+Every file the drive's 107 checks never touch is exactly as unverified as it
+was before — a component no check exercises is unverified, not done, per
+this round's own framing. Below, the three sampled units from the prior pass
+are re-read against the current `HEAD`, plus one newly confirmed class of
+gap this re-audit found: components that exist as classes but are never
+instantiated by anything, so no amount of driving `test/drive_main.rb` would
+ever reach them because nothing in the app calls them either.
+
+### New: StatusButton, ErrorDialog and ItemChangeHistory are dead code
+
+- `core/Widgets/StatusButton.vala` → `lib/planify/widgets/status_button.rb`:
+  the class exists; `grep -rn "StatusButton" lib/` finds only its own
+  definition. **Zero call sites.** It is built, it is never shown.
+- `src/Dialogs/ErrorDialog.vala` → `ErrorDialog` class in
+  `lib/planify/dialogs/productivity_report.rb`: exists; `grep -rn
+  "ErrorDialog.new" lib/` finds nothing. The port's actual error path
+  (`main_window.rb#sync`) shows a toast, never this dialog.
+- `src/Dialogs/ItemChangeHistory.vala` → `ItemChangeHistory` class in the
+  same file: exists; `grep -rn "ItemChangeHistory.new" lib/` finds nothing.
+  The detail pane shows the same rows inline instead of ever opening it.
+
+None of these three needed the runtime gate to find — a plain `grep -c`
+settles them. They were marked "✅ ported" or "🟡 confirm call sites" in
+`.reports/component-inventory.md` before this pass; see that file's
+2026-11-08 section for the corrected rows. Full writeup there; recorded here
+because this is exactly what Step 5 ("does the signal actually fire") is for,
+and "nothing calls `.new` on this class" is the starkest possible failure of
+Step 5 — it does not even need a running app to detect.
+
+---
+
+## Prior pass (2026-11-07) — kept for the audit trail; its runtime-gate conclusion is corrected above
+
 | | |
 |---|---|
 | Upstream | `main` @ `cc26aaed3` |
@@ -9,10 +70,13 @@
 
 **Headline finding: Step 4 (does the CSS actually render) and Step 5 (does
 the signal actually fire) were not run for a single unit in this port,
-because they cannot be — the runtime gate is down.** `bundle install` fails
+because they cannot be — the runtime gate is down.** ~~`bundle install` fails
 on this branch (see `.reports/test-parity.md` for the exact error); without a
 working `bundle exec`, the driver in `test/drive_main.rb` and the
-`ruby-gtk-testing` skill cannot launch the app, headless or otherwise. Every
+`ruby-gtk-testing` skill cannot launch the app, headless or otherwise.~~
+**Corrected above: this was the prior pass's own `BUNDLE_GEMFILE` mistake,
+not a repo defect. The rest of this historical section is kept verbatim for
+the audit trail; do not read its runtime-gate framing as current.** Every
 "✅" in the earlier `.reports/component-inventory.md` and in this document's
 own sampled rows below means only "a Ruby class with the right name and
 attribution comment exists" — it has never been proven to build the right

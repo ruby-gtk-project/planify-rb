@@ -1,5 +1,75 @@
 # Test parity — planify-rb
 
+## 2026-11-08 re-audit — the runtime gate below was a false claim; corrected, plus the real gate gap that remains
+
+**The "Runtime gate" section immediately below, from the prior pass, says
+`bundle install` fails outright and nothing can run. That is wrong, and the
+mistake was in how the prior pass invoked bundler, not in the repository.**
+It ran `BUNDLE_GEMFILE=$PWD/Gemfile bundle install`, overriding
+`BUNDLE_GEMFILE` to the repo-root `Gemfile` — the kettle-jem development
+bundle (rubocop, yard, the kettle-dev/kettle-test stack), explicitly
+commented in that file as "NOT loaded in CI" and not the app's runtime
+dependency set. `nix develop` on its own already sets `BUNDLE_GEMFILE` to
+`nix/Gemfile` (confirmed: inside the shell, `bundle config list` reports
+`gemfile: "…/nix/Gemfile"`, set via `BUNDLE_GEMFILE`) — the generated
+runtime-only gemset (`adwaita`, `gtk4`, `ashpd`, `edataserver`, `goa-rb`,
+`libspelling`, `soup3`, `sqlite3`, `gettext`, `base64`, `rexml`). Re-run
+without overriding it, from a clean shell:
+
+```
+$ nix develop --command bash -c 'bundle check'
+The Gemfile's dependencies are satisfied
+$ GSETTINGS_SCHEMA_DIR=$PWD/data nix develop --command xvfb-run -a bundle exec ruby test/drive_main.rb
+...
+107 of 107 checks passed
+DRIVE OK
+$ GSETTINGS_SCHEMA_DIR=$PWD/data nix develop --command xvfb-run -a bundle exec ruby test/test_load.rb test/test_sync.rb test/test_cli.rb
+...
+all checks passed
+```
+
+All four suites run and pass, matching this round's runtime gate
+(`drive_ok=true`, 107 passed, 0 failed, 24 components covered) exactly. This
+is corrected as a finding against the prior audit in
+`.reports/accountability-ensurance.md` — a false "the suite has never been
+executed and currently cannot be" claim, sitting in a parity report, is
+exactly the mechanism that skill exists to catch, independent of who wrote
+it.
+
+**What is genuinely still broken, confirmed fresh this pass:** `make test` —
+the one command `CLAUDE.md`'s "Testing" section and the dev shell's own
+printed banner (`check it all: make test`) both name as the way to verify
+anything — fails at its first step:
+
+```
+$ nix develop --command xvfb-run -a make test
+...
+bundle exec rubocop
+bundler: command not found: rubocop
+Install missing gem executables with `bundle install`
+make: *** [Makefile:25: test] Error 127
+```
+
+`rubocop` is declared only in the repo-root `Gemfile` (`group :development`),
+not in `nix/Gemfile`, the gemset `BUNDLE_GEMFILE` actually points at inside
+the dev shell. So the documented single entrypoint for "check it all" cannot
+reach past its first line in the shell the project tells a contributor to
+use — it never gets to `test_load.rb`, the drive, or the `msgfmt`/
+`appstreamcli` checks later in the same Makefile target. This is a real,
+present-tense runtime-gate defect, the opposite problem to the one wrongly
+claimed below: not "nothing can run," but "the one command documented as
+running everything stops after its first line, every time."
+
+**The test census conclusion is unchanged.** The upstream-vs-port test
+mapping below was never gated on the bundler claim — it is a static census
+of names — and a fresh re-check this pass (`grep -n 'check(' test/*.rb`)
+confirms none of the 34 upstream test identifiers appear anywhere in the
+port's current 362 `check(...)` call sites. 0/34 holds.
+
+---
+
+## Prior pass (2026-11-07) — census kept as current; its "Runtime gate" conclusion is corrected above, not current
+
 | | |
 |---|---|
 | Upstream | `main` @ `cc26aaed3` |

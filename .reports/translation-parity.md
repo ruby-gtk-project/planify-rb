@@ -1,5 +1,53 @@
 # Translation parity — planify-rb
 
+## 2026-11-08 re-audit — fresh numbers, runtime gate corrected, still not clean
+
+Regenerated via the same `.claude/skills/translation-parity/scripts/
+catalogue.rb` against a fresh `origin/main` worktree (still `cc26aaed3` —
+upstream has not moved) and this branch at `HEAD` (`505d4c1dc`, up from
+`784980523`):
+
+| | |
+|---|---|
+| Upstream messages | 993 |
+| Port messages | **714** (up from 373+327=700 at the last pass) |
+| Ported (key match) | **387** (up from 373) |
+| Gaps | **606** (down from 620) |
+| Extra (port-only keys) | **327** (unchanged) |
+| Kind mismatches | **7** (unchanged) |
+| Uses mismatches (same key, different call-site count) | **116** (newly surfaced by this run) |
+| Occurrences | upstream 1,516 / port 944 (up from 922) |
+| Languages | 84/84, identical, `languages_missing: []` |
+| `summary.parity` | **false** |
+
+The gap narrowed slightly — the per-task buttons, the CalDAV bypass row and
+the other components closed since the last `component-inventory.md` pass
+brought their own translatable strings with them — but **606 of 993
+upstream msgids (61%) still have no port counterpart**, which is not a small
+residual. The root causes named in the prior pass are unchanged and still
+open: the unported custom `core/Widgets/Calendar/*` grid and
+`core/Utils/Datetime.vala`'s relative/absolute time formatting still account
+for most of the gap sample (re-checked: `%-l:%M %p`, `%A, %B %e, %Y`, `%OB`,
+`%s %s ago`/`%s %s left` are all still absent from the port's catalogue), and
+the plural-pair-rebuilt-as-singular pattern (`%d day ago`, `%d label`, `%d
+overdue task`, …) is still present and still double-counts as a gap plus an
+extra, per the skill's own rule.
+
+**Runtime-gate correction, same as the other two reports this round:** the
+"not verified… runtime gate down" line in the Proof checklist below was
+wrong about *why* it was unrun — `bundle exec` works fine under the dev
+shell's own `BUNDLE_GEMFILE` (`nix/Gemfile`), confirmed this pass (`test/
+drive_main.rb`: 107/107, DRIVE OK). See `.reports/test-parity.md` and
+`.reports/accountability-ensurance.md` for the full correction. That said,
+**the on-screen non-English verification still was not performed in this
+pass either** — no `LANGUAGE=de` run was done here — so it remains an open,
+named-as-open item, just for a different reason now: it hasn't been done
+yet, not that it cannot be done.
+
+---
+
+## Prior pass (2026-11-07) — kept for the audit trail; numbers superseded above, runtime-gate framing in "Proof checklist" is corrected above
+
 | | |
 |---|---|
 | Upstream | `main` @ `cc26aaed3` |

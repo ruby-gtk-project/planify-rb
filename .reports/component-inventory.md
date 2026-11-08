@@ -1,5 +1,73 @@
 # Component inventory — planify upstream vs. `ruby`
 
+## 2026-11-08 re-audit — StatusButton, ErrorDialog and ItemChangeHistory confirmed dead code
+
+Re-checked at `HEAD` = `505d4c1dc` (origin/main unchanged at `cc26aaed3`).
+`grep -rn "StatusButton" lib/` finds exactly one hit: the class definition
+itself (`lib/planify/widgets/status_button.rb:8`). No file anywhere under
+`lib/` instantiates it. The prior pass below marked this row "✅ ported;
+verify its call sites" — that verification is now done, and the answer is
+**no call sites exist at all**. `StatusButton` is not "thinner than upstream"
+or partially wired; it is a class that exists and is never used. Corrected
+row: `core/Widgets/StatusButton.vala` → `lib/planify/widgets/status_button.rb`
+→ 🟡 **class exists, zero call sites — dead code, not reachable from any
+window.**
+
+Same check for the two dialogs the prior pass could only "cross-reference":
+`Dialogs::ItemChangeHistory` and `Dialogs::ErrorDialog` are both now real,
+named classes in `lib/planify/dialogs/productivity_report.rb:231` and `:292`
+respectively — that part of the prior note is resolved. But
+`grep -rn "ErrorDialog.new\|ItemChangeHistory.new" lib/` finds **zero**
+matches anywhere in the tree. Neither class is ever instantiated. Upstream's
+`ErrorDialog` is what a failed sync or corrupt database shows the user
+(`src/Dialogs/ErrorDialog.vala`); the port's actual error path
+(`main_window.rb`'s `#sync`) shows a toast instead and never reaches this
+class. Upstream's `ItemChangeHistory` is a dedicated dialog opened from a
+task's detail pane; the port only shows the equivalent rows inline
+(`item_detail.rb:248`), never through the dialog shape that exists for it.
+Corrected rows:
+
+| Upstream | → lib/*.rb | Kind | Exists |
+|---|---|---|---|
+| `src/Dialogs/ErrorDialog.vala` | `lib/planify/dialogs/productivity_report.rb` (`ErrorDialog` class) | **error state** | 🟡 class exists, zero call sites anywhere in `lib/` — no error path opens it, so no user ever sees the error dialog upstream ships |
+| `src/Dialogs/ItemChangeHistory.vala` | `lib/planify/dialogs/productivity_report.rb` (`ItemChangeHistory` class) | dialog | 🟡 class exists, zero call sites anywhere in `lib/` — the detail pane shows the same rows inline (`item_detail.rb:248`) but nothing ever opens this dialog |
+
+This is the same failure mode `component-parity.md` records for `SyncButton`
+(a connected-looking shape that does nothing when reached) one level up: here
+the shape is not even reached. A grep for the class name is not enough to
+call a component ported; `grep -c '\.new'` on it is the next check, and these
+three rows failed it.
+
+## 2026-11-08 — runtime gate re-verified, corrects a false claim made one layer up
+
+`.reports/component-parity.md` and `.reports/test-parity.md`, as they stood
+before this pass, both say the runtime gate is down and `bundle install`
+cannot resolve. That was true of the command they ran
+(`BUNDLE_GEMFILE=$PWD/Gemfile bundle install`, which targets the repo-root
+`Gemfile` — the `kettle-jem` development bundle, not the app's runtime
+dependencies) but it is not true of the command the dev shell and `CLAUDE.md`
+actually run: entering `nix develop` sets `BUNDLE_GEMFILE` to `nix/Gemfile`
+(the generated runtime gemset — `adwaita`, `gtk4`, `ashpd`, `edataserver`,
+`goa-rb`, `libspelling`, `soup3`, `sqlite3`, `gettext`, `base64`, `rexml`,
+nothing from the kettle-dev stack), and under that Gemfile `bundle check`
+reports "The Gemfile's dependencies are satisfied" and
+`GSETTINGS_SCHEMA_DIR=$PWD/data nix develop --command xvfb-run -a bundle exec
+ruby test/drive_main.rb` runs to completion: **107 of 107 checks passed,
+DRIVE OK**, matching this round's runtime gate exactly. `test_load.rb`,
+`test_sync.rb` and `test_cli.rb` also pass in full under the same shell. See
+`.reports/accountability-ensurance.md` for this corrected as a finding
+against the audit, not just the code — the prior reports' "nothing can run"
+conclusion was itself wrong, not a flaky observation.
+
+**What is still actually broken, confirmed independently**: `make test` — the
+one command `CLAUDE.md` and the dev shell's own banner both name as "check it
+all" — fails immediately: `bundle exec rubocop` exits "command not found:
+rubocop", because `rubocop` lives only in the root `Gemfile` (the
+kettle-dev/style bundle), not in `nix/Gemfile` (the runtime gemset the dev
+shell's `BUNDLE_GEMFILE` points at). The documented single entrypoint for
+verifying a change does not run end to end in the shell `CLAUDE.md` tells a
+contributor to use. See `.reports/test-parity.md`.
+
 Scope: `origin/main` (Vala, read via `git show origin/main:<path>` /
 `git ls-tree -r --name-only origin/main`) compared against `lib/` on this
 branch, as of `HEAD` = `ce4a3dc00` ("Add drive checks that exercise ashpd and
