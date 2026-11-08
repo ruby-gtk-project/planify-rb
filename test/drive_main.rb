@@ -518,8 +518,13 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
     @label_dialog.save
     d.check("no label was added") { store.call.labels.size == before }
     window.call.window.visible_dialog&.close
-    d.shot("24-duplicate-label")
   end
+
+  # The shot waits a tick: the dialog's close above changed the window's
+  # content in the same step, and a widget whose content changed in this tick
+  # has not been laid out again yet, which leaves Gtk::WidgetPaintable with no
+  # render node at all rather than a stale picture.
+  d.step("the window renders with the dialog gone") { d.shot("24-duplicate-label") }
 
   d.step("All Tasks opens with its filter chips") do
     window.call.go_all
@@ -534,8 +539,12 @@ GtkDriver.drive(app, shots: "tmp/shots") do |d, _|
       d.check("it holds every pending task") { view.items.size == store.call.pending.size }
       @all_view = view
     end
-    d.shot("25-all-tasks")
   end
+
+  # Same reason as the duplicate-label shot above: the filter view was just
+  # switched to in this step's own tick, so the shot needs a further step to
+  # let layout catch up before it paints.
+  d.step("the all-tasks view renders") { d.shot("25-all-tasks") }
 
   d.step("narrowing by priority") do
     @all_view.add_chip("priority:#{Item::PRIORITY_1}")
