@@ -96,6 +96,19 @@ Gem::Specification.new do |spec|
   spec.executables = ["planify", "planify-cli", "planify-dev", "planify-quick-add"]
   spec.require_paths = ["lib"]
 
+  spec.add_dependency("adwaita")
+  spec.add_dependency("ashpd")        # xdg-desktop-portal Settings (Theme's dark-mode detection)
+  spec.add_dependency("base64") # no longer a default gem as of Ruby 3.4
+  spec.add_dependency("edataserver")  # Evolution Data Server source registry (CalendarEvents)
+  spec.add_dependency("gettext")
+  spec.add_dependency("glib2")
+  spec.add_dependency("goa-rb")       # GNOME Online Accounts (Services::GOA)
+  spec.add_dependency("gtk4")
+  spec.add_dependency("libspelling")  # Inline spellchecking for the editable text views (MarkdownEditor)
+  spec.add_dependency("rexml")  # no longer a default gem as of Ruby 3.4; WebDAV parses XML with it
+  spec.add_dependency("soup3")        # HTTP, replacing the net/http + openssl standin
+  spec.add_dependency("sqlite3")
+
   # NOTE: It is preferable to list development dependencies in the gemspec due to increased
   #       visibility and discoverability.
   #       However, development dependencies in gemspec will install on
@@ -108,30 +121,6 @@ Gem::Specification.new do |spec|
   #
   #       Development dependencies that require strictly newer Ruby versions should be in a "gemfile",
   #       and preferably a modular one (see gemfiles/modular/*.gemfile).
-
-  # Runtime: the GTK4 / Libadwaita toolkit itself
-  spec.add_dependency("gtk4")
-  spec.add_dependency("adwaita")
-  spec.add_dependency("glib2")
-
-  # Runtime: the database and the translation layer, both required
-  # unconditionally by lib/planify.rb — without them the app cannot start.
-  spec.add_dependency("sqlite3")
-  spec.add_dependency("gettext")
-  spec.add_dependency("base64") # no longer a default gem as of Ruby 3.4
-  spec.add_dependency("rexml")  # no longer a default gem as of Ruby 3.4; WebDAV parses XML with it
-
-  # Runtime: this app's binding gems
-  #
-  # `appstream` was dropped: upstream never touches the AppStream GI
-  # namespace anywhere in src/ or core/ — the only "appstream" in its tree is
-  # a URI scheme string and a Flathub REST path, and metadata validation goes
-  # through the `appstreamcli` binary (still in flake.nix), not this gem.
-  spec.add_dependency("ashpd")        # xdg-desktop-portal Settings (Theme's dark-mode detection)
-  spec.add_dependency("edataserver")  # Evolution Data Server source registry (CalendarEvents)
-  spec.add_dependency("goa-rb")       # GNOME Online Accounts (Services::GOA)
-  spec.add_dependency("libspelling")  # Inline spellchecking for the editable text views (MarkdownEditor)
-  spec.add_dependency("soup3")        # HTTP, replacing the net/http + openssl standin
 
   # Dev, Test, & Release Tasks
   spec.add_development_dependency("kettle-dev", "~> 3.1", ">= 3.1.26")             # ruby >= 3.4
